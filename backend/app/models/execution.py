@@ -14,6 +14,9 @@ class Run(IdMixin, TimestampMixin, Base):
     environment_id: Mapped[str] = mapped_column(
         ForeignKey("environments.id", ondelete="CASCADE"), index=True
     )
+    deployment_id: Mapped[str | None] = mapped_column(
+        ForeignKey("deployments.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
     trigger: Mapped[str] = mapped_column(String(30), default="manual")
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

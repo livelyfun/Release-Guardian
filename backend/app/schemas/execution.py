@@ -26,6 +26,7 @@ class RunOut(ORMModel):
     id: str
     monitor_id: str
     environment_id: str
+    deployment_id: str | None
     status: RunStatus
     trigger: str
     started_at: datetime | None

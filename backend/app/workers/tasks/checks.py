@@ -11,6 +11,7 @@ from app.services.incidents import (
 )
 from app.services.notifications import dispatch as notification_dispatch
 from app.services.regression import summarize as summarize_regression
+from app.services.runs import refresh_deployment_status
 
 
 def execute_run(run_id: str) -> dict:
@@ -24,6 +25,8 @@ def execute_run(run_id: str) -> dict:
         if monitor is None:
             run.status = "inconclusive"
             run.summary = {"error": "monitor missing"}
+            if run.deployment_id is not None:
+                refresh_deployment_status(db, run.deployment_id)
             db.commit()
             return {"run_id": run_id, "status": "inconclusive"}
 
@@ -90,6 +93,9 @@ def execute_run(run_id: str) -> dict:
                         db, f"monitor:{monitor.id}:regression"
                     )
 
+        if run.deployment_id is not None:
+            refresh_deployment_status(db, run.deployment_id)
+
         db.commit()
 
         for incident in opened_incidents:
@@ -105,6 +111,8 @@ def execute_run(run_id: str) -> dict:
             run.status = "inconclusive"
             run.finished_at = utcnow()
             run.summary = {"error": str(exc)[:500]}
+            if run.deployment_id is not None:
+                refresh_deployment_status(db, run.deployment_id)
             db.commit()
         return {"run_id": run_id, "status": "error", "error": str(exc)[:500]}
     finally:
