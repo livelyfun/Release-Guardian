@@ -6,7 +6,7 @@ from app.models.project import Environment, Monitor, Project
 from app.models.release import Incident, IncidentEvent
 
 
-def resolve_open_incidents(db: Session, dedupe_key: str) -> None:
+def resolve_open_incidents(db: Session, dedupe_key: str) -> list[Incident]:
     open_incidents = (
         db.query(Incident)
         .filter(Incident.dedupe_key == dedupe_key, Incident.status != "resolved")
@@ -16,11 +16,12 @@ def resolve_open_incidents(db: Session, dedupe_key: str) -> None:
         incident.status = "resolved"
         incident.resolved_at = utcnow()
         db.add(IncidentEvent(incident_id=incident.id, type="resolved", message="Check recovered"))
+    return open_incidents
 
 
 def open_or_refresh_incident(
     db: Session, run: Run, monitor: Monitor, environment: Environment, project: Project, reason: str
-) -> Incident:
+) -> tuple[Incident, bool]:
     dedupe_key = f"monitor:{monitor.id}:failure"
     existing = (
         db.query(Incident)
@@ -37,7 +38,7 @@ def open_or_refresh_incident(
                 meta={"run_id": run.id},
             )
         )
-        return existing
+        return existing, False
 
     incident = Incident(
         workspace_id=project.workspace_id,
@@ -57,4 +58,4 @@ def open_or_refresh_incident(
             meta={"run_id": run.id, "monitor_id": monitor.id},
         )
     )
-    return incident
+    return incident, True

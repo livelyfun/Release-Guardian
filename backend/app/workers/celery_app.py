@@ -19,10 +19,24 @@ celery_app.conf.update(
     task_default_queue="release_guardian",
     task_default_retry_delay=30,
     task_max_retries=3,
+    beat_schedule={
+        "schedule-due-monitors": {
+            "task": "release_guardian.schedule_due_monitors",
+            "schedule": 60.0,
+        }
+    },
 )
+
 
 @celery_app.task(name="release_guardian.execute_run", bind=True, max_retries=3)
 def execute_run_task(self, run_id: str) -> dict:
     from app.workers.tasks.checks import execute_run
 
     return execute_run(run_id)
+
+
+@celery_app.task(name="release_guardian.schedule_due_monitors")
+def schedule_due_monitors_task() -> dict:
+    from app.workers.tasks.scheduler import enqueue_due_monitors
+
+    return enqueue_due_monitors()

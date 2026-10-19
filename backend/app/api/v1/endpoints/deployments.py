@@ -9,6 +9,7 @@ from app.models.project import Environment, Project
 from app.models.release import Deployment
 from app.schemas.release import DeploymentCreate, DeploymentOut
 from app.services import audit
+from app.services.runs import enqueue_runs_for_environment
 
 router = APIRouter(tags=["deployments"])
 
@@ -76,6 +77,8 @@ def create_deployment(
     )
     db.commit()
     db.refresh(deployment)
+
+    enqueue_runs_for_environment(db, environment_id, trigger="deployment")
     return DeploymentOut.model_validate(deployment)
 
 

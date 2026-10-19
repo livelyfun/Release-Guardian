@@ -5,6 +5,7 @@ from app.models.project import Environment, Monitor, Project
 from app.models.release import UsageRecord
 from app.services.checks import perform_http_check
 from app.services.incidents import open_or_refresh_incident, resolve_open_incidents
+from app.services.notifications import dispatch as notification_dispatch
 
 
 def execute_run(run_id: str) -> dict:
@@ -49,17 +50,29 @@ def execute_run(run_id: str) -> dict:
         run.summary = outcome.summary
         monitor.last_checked_at = run.finished_at
 
+        opened_incident = None
+        resolved_incidents = []
         if project is not None and environment is not None:
             db.add(
                 UsageRecord(workspace_id=project.workspace_id, metric="runs", quantity=1.0)
             )
             if outcome.status == "failed":
                 reason = outcome.steps[-1].error or "Check failed"
-                open_or_refresh_incident(db, run, monitor, environment, project, reason)
+                incident, created = open_or_refresh_incident(
+                    db, run, monitor, environment, project, reason
+                )
+                if created:
+                    opened_incident = incident
             else:
-                resolve_open_incidents(db, f"monitor:{monitor.id}:failure")
+                resolved_incidents = resolve_open_incidents(db, f"monitor:{monitor.id}:failure")
 
         db.commit()
+
+        if opened_incident is not None:
+            notification_dispatch.incident_opened(db, opened_incident)
+        for incident in resolved_incidents:
+            notification_dispatch.incident_resolved(db, incident)
+
         return {"run_id": run.id, "status": run.status}
     except Exception as exc:  # noqa: BLE001
         db.rollback()
