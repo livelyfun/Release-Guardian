@@ -1,12 +1,46 @@
 # AGENTS.md
 
-## Repository status (as of 2026-10-19)
+## Project
 
-This directory is **empty** — no files, no git repository, no build/test/lint config, no CI workflows, no `opencode.json`.
+Release Guardian — multi-tenant website reliability, synthetic monitoring, and release
+verification. Design docs live in `docs/master-plan/release-guardian/`.
 
-## Guidance for future sessions
+## Layout
 
-- This is a **new, uninitialized project**. Do not assume any language, framework, or tooling.
-- Before writing code, ask the user for the intended stack, package manager, and project structure.
-- Initialize git only if the user asks (`git init`).
-- There are no existing commands to run (no `package.json`, `Makefile`, `pyproject.toml`, etc.).
+- `backend/` — FastAPI control plane, SQLAlchemy models, Celery workers, Alembic migrations, pytest.
+- `frontend/` — Next.js (App Router) + TypeScript + Tailwind dashboard.
+- `docs/master-plan/` — product, architecture, security, and operations plans.
+- `.github/workflows/ci.yml` — backend lint/tests and frontend lint/typecheck/build.
+
+## Commands
+
+Run from the repository root unless noted.
+
+- `make install` — install backend and frontend dependencies.
+- `make up` — start local Postgres and Redis via Docker Compose.
+- `make migrate` — apply Alembic migrations (`backend/alembic`).
+- `make test` — backend pytest suite.
+- `make lint` — ruff (backend) and Next.js ESLint (frontend).
+- `make dev-api` — FastAPI on `http://localhost:8000` (docs at `/docs`).
+- `make dev-worker` — Celery worker; `make dev-scheduler` — Celery beat.
+- `make dev-web` — Next.js on `http://localhost:3000`.
+
+Backend venv used in this environment: `backend/.venv` (Python 3.12).
+Invoke tools as `backend/.venv/bin/pytest`, `backend/.venv/bin/ruff`, etc.
+
+## Conventions
+
+- Python 3.11+ (CI uses 3.12), Ruff lint (`E,F,I,B,UP`; `B008` ignored for FastAPI `Depends`).
+- TypeScript strict; path alias `@/*` → `frontend/src/*`.
+- Every tenant-scoped query must enforce workspace membership server-side
+  (`app/api/v1/deps.py`, `app/api/v1/access.py`).
+- User-supplied URLs pass through `app/services/url_guard.py` (SSRF defense) before execution.
+- Errors use the structured envelope in `app/core/errors.py`.
+- Do not commit secrets. `.env` is ignored; keep `.env.example` current.
+
+## Implementation status
+
+Engineering foundation and first vertical slice are implemented: identity/workspaces,
+projects/environments, monitors, runs (inline/Celery), deployments, incidents, API keys,
+audit logs, and the dashboard. Remaining master-plan phases (release verification suites,
+baselines/regression detection, notification delivery, billing, AI assistance) are not yet built.

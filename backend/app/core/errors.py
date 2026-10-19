@@ -17,6 +17,16 @@ ERROR_CODES = {
 }
 
 
+def _validation_details(exc: RequestValidationError) -> list:
+    details = []
+    for error in exc.errors():
+        item = {key: value for key, value in error.items() if key != "ctx"}
+        ctx = error.get("ctx") or {}
+        item["ctx"] = {key: str(value) for key, value in ctx.items()}
+        details.append(item)
+    return details
+
+
 def error_body(status_code: int, message: str, details=None, request_id: str | None = None) -> dict:
     return {
         "error": {
@@ -43,7 +53,7 @@ def install_error_handlers(app: FastAPI) -> None:
         req_id = request.headers.get("X-Request-ID", uuid.uuid4().hex)
         return JSONResponse(
             status_code=422,
-            content=error_body(422, "Request validation failed", exc.errors(), req_id),
+            content=error_body(422, "Request validation failed", _validation_details(exc), req_id),
             headers={"X-Request-ID": req_id},
         )
 

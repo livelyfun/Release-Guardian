@@ -1,0 +1,28 @@
+from celery import Celery
+
+from app.core.config import settings
+
+celery_app = Celery(
+    "release_guardian",
+    broker=settings.redis_url,
+    backend=settings.redis_url,
+)
+
+celery_app.conf.update(
+    task_serializer="json",
+    accept_content=["json"],
+    result_serializer="json",
+    timezone="UTC",
+    enable_utc=True,
+    task_acks_late=True,
+    worker_prefetch_multiplier=1,
+    task_default_queue="release_guardian",
+    task_default_retry_delay=30,
+    task_max_retries=3,
+)
+
+@celery_app.task(name="release_guardian.execute_run", bind=True, max_retries=3)
+def execute_run_task(self, run_id: str) -> dict:
+    from app.workers.tasks.checks import execute_run
+
+    return execute_run(run_id)
