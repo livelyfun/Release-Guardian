@@ -1,12 +1,60 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
-from app.schemas.common import ORMModel
+from app.schemas.common import ORMModel, validate_http_url
 
 Severity = Literal["critical", "high", "medium", "low"]
 IncidentStatus = Literal["open", "acknowledged", "resolved"]
+ChannelKind = Literal["webhook", "email"]
+
+
+class _ChannelConfig(BaseModel):
+    kind: ChannelKind = "webhook"
+    config: dict = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _validate_config(self):
+        if self.kind == "webhook":
+            url = self.config.get("url")
+            if not isinstance(url, str) or not url:
+                raise ValueError("Webhook channels require config.url")
+            validate_http_url(url)
+        elif self.kind == "email":
+            to = self.config.get("to")
+            if not isinstance(to, str) or not to:
+                raise ValueError("Email channels require config.to")
+        return self
+
+
+class NotificationChannelCreate(_ChannelConfig):
+    enabled: bool = True
+
+
+class NotificationChannelUpdate(BaseModel):
+    kind: ChannelKind | None = None
+    config: dict | None = None
+    enabled: bool | None = None
+
+
+class NotificationChannelOut(ORMModel):
+    id: str
+    workspace_id: str
+    kind: ChannelKind
+    config: dict
+    enabled: bool
+    created_at: datetime
+
+
+class NotificationAttemptOut(ORMModel):
+    id: str
+    channel_id: str
+    incident_id: str | None
+    status: str
+    attempt: int
+    error: str | None
+    created_at: datetime
 
 
 class DeploymentCreate(BaseModel):

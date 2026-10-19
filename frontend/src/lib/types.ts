@@ -103,6 +103,27 @@ export interface Incident {
   resolved_at: string | null;
 }
 
+export type ChannelKind = "webhook" | "email";
+
+export interface NotificationChannel {
+  id: string;
+  workspace_id: string;
+  kind: ChannelKind;
+  config: Record<string, string>;
+  enabled: boolean;
+  created_at: string;
+}
+
+export interface NotificationAttempt {
+  id: string;
+  channel_id: string;
+  incident_id: string | null;
+  status: string;
+  attempt: number;
+  error: string | null;
+  created_at: string;
+}
+
 export interface ApiKey {
   id: string;
   workspace_id: string;

@@ -3,8 +3,10 @@ import time
 
 import httpx
 
+from app.core.config import settings
 from app.core.security import sign_webhook
 from app.services.notifications.base import Notification, NotificationError
+from app.services.url_guard import UrlValidationError, validate_url
 
 
 class WebhookNotifier:
@@ -14,6 +16,11 @@ class WebhookNotifier:
         self.url = url
 
     def send(self, notification: Notification) -> None:
+        try:
+            validate_url(self.url, settings.allow_private_urls)
+        except UrlValidationError as exc:
+            raise NotificationError(str(exc)) from exc
+
         timestamp = str(int(time.time()))
         body = json.dumps(
             {

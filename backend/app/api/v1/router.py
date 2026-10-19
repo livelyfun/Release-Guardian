@@ -7,6 +7,7 @@ from app.api.v1.endpoints import (
     environments,
     incidents,
     monitors,
+    notifications,
     projects,
     runs,
     workspaces,
@@ -23,4 +24,5 @@ api_router.include_router(monitors.router)
 api_router.include_router(runs.router)
 api_router.include_router(deployments.router)
 api_router.include_router(incidents.router)
+api_router.include_router(notifications.router)
 api_router.include_router(api_keys.router)
