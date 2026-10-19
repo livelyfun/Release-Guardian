@@ -19,10 +19,17 @@ def resolve_open_incidents(db: Session, dedupe_key: str) -> list[Incident]:
     return open_incidents
 
 
-def open_or_refresh_incident(
-    db: Session, run: Run, monitor: Monitor, environment: Environment, project: Project, reason: str
+def _open_or_refresh(
+    db: Session,
+    *,
+    dedupe_key: str,
+    title: str,
+    severity: str,
+    run: Run,
+    project: Project,
+    environment: Environment,
+    reason: str,
 ) -> tuple[Incident, bool]:
-    dedupe_key = f"monitor:{monitor.id}:failure"
     existing = (
         db.query(Incident)
         .filter(Incident.dedupe_key == dedupe_key, Incident.status != "resolved")
@@ -44,8 +51,8 @@ def open_or_refresh_incident(
         workspace_id=project.workspace_id,
         project_id=project.id,
         environment_id=environment.id,
-        title=f"{monitor.name} failing in {environment.name}",
-        severity="high" if environment.is_production else "medium",
+        title=title,
+        severity=severity,
         dedupe_key=dedupe_key,
     )
     db.add(incident)
@@ -55,7 +62,48 @@ def open_or_refresh_incident(
             incident_id=incident.id,
             type="opened",
             message=reason,
-            meta={"run_id": run.id, "monitor_id": monitor.id},
+            meta={"run_id": run.id},
         )
     )
     return incident, True
+
+
+def open_or_refresh_incident(
+    db: Session, run: Run, monitor: Monitor, environment: Environment, project: Project, reason: str
+) -> tuple[Incident, bool]:
+    return _open_or_refresh(
+        db,
+        dedupe_key=f"monitor:{monitor.id}:failure",
+        title=f"{monitor.name} failing in {environment.name}",
+        severity="high" if environment.is_production else "medium",
+        run=run,
+        project=project,
+        environment=environment,
+        reason=reason,
+    )
+
+
+def open_regression_incident(
+    db: Session,
+    run: Run,
+    monitor: Monitor,
+    environment: Environment,
+    project: Project,
+    actual_ms: int,
+    baseline_ms: float,
+    threshold_ms: float,
+) -> tuple[Incident, bool]:
+    reason = (
+        f"Duration {actual_ms} ms exceeded baseline {baseline_ms:.0f} ms "
+        f"(threshold {threshold_ms:.0f} ms)"
+    )
+    return _open_or_refresh(
+        db,
+        dedupe_key=f"monitor:{monitor.id}:regression",
+        title=f"Performance regression: {monitor.name} in {environment.name}",
+        severity="medium" if environment.is_production else "low",
+        run=run,
+        project=project,
+        environment=environment,
+        reason=reason,
+    )

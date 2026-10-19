@@ -4,8 +4,13 @@ from app.models.execution import Run, StepResult
 from app.models.project import Environment, Monitor, Project
 from app.models.release import UsageRecord
 from app.services.checks import perform_http_check
-from app.services.incidents import open_or_refresh_incident, resolve_open_incidents
+from app.services.incidents import (
+    open_or_refresh_incident,
+    open_regression_incident,
+    resolve_open_incidents,
+)
 from app.services.notifications import dispatch as notification_dispatch
+from app.services.regression import summarize as summarize_regression
 
 
 def execute_run(run_id: str) -> dict:
@@ -50,7 +55,7 @@ def execute_run(run_id: str) -> dict:
         run.summary = outcome.summary
         monitor.last_checked_at = run.finished_at
 
-        opened_incident = None
+        opened_incidents = []
         resolved_incidents = []
         if project is not None and environment is not None:
             db.add(
@@ -62,14 +67,33 @@ def execute_run(run_id: str) -> dict:
                     db, run, monitor, environment, project, reason
                 )
                 if created:
-                    opened_incident = incident
+                    opened_incidents.append(incident)
             else:
-                resolved_incidents = resolve_open_incidents(db, f"monitor:{monitor.id}:failure")
+                resolved_incidents += resolve_open_incidents(db, f"monitor:{monitor.id}:failure")
+
+                regression = summarize_regression(db, monitor, run, outcome.duration_ms)
+                if regression.get("regression"):
+                    incident, created = open_regression_incident(
+                        db,
+                        run,
+                        monitor,
+                        environment,
+                        project,
+                        regression["actual_ms"],
+                        regression["baseline_ms"],
+                        regression["threshold_ms"],
+                    )
+                    if created:
+                        opened_incidents.append(incident)
+                else:
+                    resolved_incidents += resolve_open_incidents(
+                        db, f"monitor:{monitor.id}:regression"
+                    )
 
         db.commit()
 
-        if opened_incident is not None:
-            notification_dispatch.incident_opened(db, opened_incident)
+        for incident in opened_incidents:
+            notification_dispatch.incident_opened(db, incident)
         for incident in resolved_incidents:
             notification_dispatch.incident_resolved(db, incident)
 
