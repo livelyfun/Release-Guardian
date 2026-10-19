@@ -74,6 +74,7 @@ class MonitorUpdate(BaseModel):
     interval_seconds: int | None = Field(default=None, ge=30, le=86400)
     enabled: bool | None = None
     config: dict | None = None
+    kind: str | None = None
 
 
 class MonitorOut(ORMModel):
