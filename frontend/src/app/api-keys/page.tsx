@@ -12,6 +12,7 @@ export default function ApiKeysPage() {
     workspaceId ? `/workspaces/${workspaceId}/api-keys` : null,
   );
   const [name, setName] = useState("");
+  const [scope, setScope] = useState<"read" | "write" | "admin">("read");
   const [created, setCreated] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -23,7 +24,11 @@ export default function ApiKeysPage() {
     setFormError(null);
     setCreated(null);
     try {
-      const result = await apiClient.post<ApiKey>(`/workspaces/${workspaceId}/api-keys`, { name });
+      const scopes = scope === "read" ? [] : [scope];
+      const result = await apiClient.post<ApiKey>(`/workspaces/${workspaceId}/api-keys`, {
+        name,
+        scopes,
+      });
       setCreated(result.key ?? null);
       setName("");
       reload();
@@ -58,7 +63,7 @@ export default function ApiKeysPage() {
         </Card>
       ) : null}
 
-      <form onSubmit={create} className="card mb-6 grid gap-3 p-5 sm:grid-cols-[1fr_auto] sm:items-end">
+      <form onSubmit={create} className="card mb-6 grid gap-3 p-5 sm:grid-cols-[1fr_160px_auto] sm:items-end">
         <div>
           <label className="label" htmlFor="key-name">
             Key name
@@ -70,6 +75,21 @@ export default function ApiKeysPage() {
             onChange={(event) => setName(event.target.value)}
             required
           />
+        </div>
+        <div>
+          <label className="label" htmlFor="key-scope">
+            Scope
+          </label>
+          <select
+            id="key-scope"
+            className="input"
+            value={scope}
+            onChange={(event) => setScope(event.target.value as "read" | "write" | "admin")}
+          >
+            <option value="read">Read</option>
+            <option value="write">Write</option>
+            <option value="admin">Admin</option>
+          </select>
         </div>
         <button className="btn-primary" disabled={busy || !workspaceId}>
           {busy ? "Creating…" : "Create key"}
@@ -89,6 +109,7 @@ export default function ApiKeysPage() {
               <tr>
                 <th>Name</th>
                 <th>Prefix</th>
+                <th>Scope</th>
                 <th>Status</th>
                 <th>Created</th>
                 <th />
@@ -99,6 +120,9 @@ export default function ApiKeysPage() {
                 <tr key={key.id}>
                   <td className="font-medium">{key.name}</td>
                   <td className="font-mono text-xs text-slate-500">{key.prefix}…</td>
+                  <td className="text-slate-500">
+                    {key.scopes.length > 0 ? key.scopes.join(", ") : "read"}
+                  </td>
                   <td className="text-slate-500">{key.revoked_at ? `revoked ${formatDate(key.revoked_at)}` : "active"}</td>
                   <td className="text-slate-500">{formatDate(key.created_at)}</td>
                   <td>

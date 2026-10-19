@@ -2,10 +2,9 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.v1.access import authorize_monitor, authorize_run, get_monitor, get_run
-from app.api.v1.deps import get_current_user, require_role
+from app.api.v1.deps import Principal, get_principal, require_role
 from app.core.database import get_db
 from app.models.execution import Run
-from app.models.identity import User
 from app.models.project import Environment, Project
 from app.schemas.execution import RunCreate, RunDetailOut, RunOut
 from app.services import audit
@@ -22,7 +21,7 @@ router = APIRouter(tags=["runs"])
 def trigger_run(
     monitor_id: str,
     payload: RunCreate,
-    user: User = Depends(get_current_user),
+    user: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> RunOut:
     monitor = get_monitor(db, monitor_id)
@@ -56,7 +55,7 @@ def trigger_run(
 def list_monitor_runs(
     monitor_id: str,
     limit: int = Query(default=50, le=200),
-    user: User = Depends(get_current_user),
+    user: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> list[RunOut]:
     monitor = get_monitor(db, monitor_id)
@@ -75,7 +74,7 @@ def list_monitor_runs(
 def list_runs(
     workspace_id: str = Query(...),
     limit: int = Query(default=100, le=500),
-    user: User = Depends(get_current_user),
+    user: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> list[RunOut]:
     require_role(db, workspace_id, user, "viewer")
@@ -94,7 +93,7 @@ def list_runs(
 @router.get("/runs/{run_id}", response_model=RunDetailOut)
 def get_run_detail(
     run_id: str,
-    user: User = Depends(get_current_user),
+    user: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> RunDetailOut:
     run = get_run(db, run_id)

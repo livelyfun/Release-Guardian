@@ -1,10 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.v1.deps import get_current_user, require_role
+from app.api.v1.deps import Principal, get_principal, require_role
 from app.core.database import get_db
 from app.models.base import utcnow
-from app.models.identity import User
 from app.models.release import Incident, IncidentEvent
 from app.schemas.release import IncidentOut, IncidentUpdate
 from app.services import audit
@@ -12,7 +11,7 @@ from app.services import audit
 router = APIRouter(tags=["incidents"])
 
 
-def _authorize_incident(db: Session, incident_id: str, user: User) -> Incident:
+def _authorize_incident(db: Session, incident_id: str, user: Principal) -> Incident:
     incident = db.get(Incident, incident_id)
     if incident is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Incident not found")
@@ -24,7 +23,7 @@ def _authorize_incident(db: Session, incident_id: str, user: User) -> Incident:
 def list_incidents(
     workspace_id: str = Query(...),
     status_filter: str | None = Query(default=None, alias="status"),
-    user: User = Depends(get_current_user),
+    user: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> list[IncidentOut]:
     require_role(db, workspace_id, user, "viewer")
@@ -38,7 +37,7 @@ def list_incidents(
 @router.get("/incidents/{incident_id}", response_model=IncidentOut)
 def get_incident(
     incident_id: str,
-    user: User = Depends(get_current_user),
+    user: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> IncidentOut:
     incident = _authorize_incident(db, incident_id, user)
@@ -49,7 +48,7 @@ def get_incident(
 def update_incident(
     incident_id: str,
     payload: IncidentUpdate,
-    user: User = Depends(get_current_user),
+    user: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> IncidentOut:
     incident = _authorize_incident(db, incident_id, user)

@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.v1.deps import get_current_user, require_role
+from app.api.v1.deps import Principal, get_principal, require_role
 from app.core.database import get_db
 from app.models.base import utcnow
-from app.models.identity import ApiKey, User
+from app.models.identity import ApiKey
 from app.schemas.identity import ApiKeyCreate, ApiKeyOut
 from app.services import audit
 from app.services.slug import api_key as generate_api_key
@@ -15,7 +15,7 @@ router = APIRouter(tags=["api-keys"])
 @router.get("/workspaces/{workspace_id}/api-keys", response_model=list[ApiKeyOut])
 def list_api_keys(
     workspace_id: str,
-    user: User = Depends(get_current_user),
+    user: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> list[ApiKeyOut]:
     require_role(db, workspace_id, user, "viewer")
@@ -36,7 +36,7 @@ def list_api_keys(
 def create_api_key(
     workspace_id: str,
     payload: ApiKeyCreate,
-    user: User = Depends(get_current_user),
+    user: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> ApiKeyOut:
     require_role(db, workspace_id, user, "admin")
@@ -68,7 +68,7 @@ def create_api_key(
 @router.delete("/api-keys/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
 def revoke_api_key(
     key_id: str,
-    user: User = Depends(get_current_user),
+    user: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> None:
     key = db.get(ApiKey, key_id)

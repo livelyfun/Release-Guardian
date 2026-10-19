@@ -2,9 +2,8 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.v1.access import authorize_project, get_project
-from app.api.v1.deps import get_current_user, require_role
+from app.api.v1.deps import Principal, get_principal, require_role
 from app.core.database import get_db
-from app.models.identity import User
 from app.models.project import Project
 from app.schemas.project import ProjectCreate, ProjectOut, ProjectUpdate
 from app.services import audit
@@ -16,7 +15,7 @@ router = APIRouter(tags=["projects"])
 @router.get("/projects", response_model=list[ProjectOut])
 def list_projects(
     workspace_id: str = Query(...),
-    user: User = Depends(get_current_user),
+    user: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> list[ProjectOut]:
     require_role(db, workspace_id, user, "viewer")
@@ -32,7 +31,7 @@ def list_projects(
 @router.post("/projects", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)
 def create_project(
     payload: ProjectCreate,
-    user: User = Depends(get_current_user),
+    user: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> ProjectOut:
     require_role(db, payload.workspace_id, user, "developer")
@@ -59,7 +58,7 @@ def create_project(
 @router.get("/projects/{project_id}", response_model=ProjectOut)
 def get_project_detail(
     project_id: str,
-    user: User = Depends(get_current_user),
+    user: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> ProjectOut:
     project = get_project(db, project_id)
@@ -71,7 +70,7 @@ def get_project_detail(
 def update_project(
     project_id: str,
     payload: ProjectUpdate,
-    user: User = Depends(get_current_user),
+    user: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> ProjectOut:
     project = get_project(db, project_id)

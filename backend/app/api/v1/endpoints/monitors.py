@@ -7,9 +7,8 @@ from app.api.v1.access import (
     get_environment,
     get_monitor,
 )
-from app.api.v1.deps import get_current_user, require_role
+from app.api.v1.deps import Principal, get_principal, require_role
 from app.core.database import get_db
-from app.models.identity import User
 from app.models.project import Environment, Monitor, Project
 from app.schemas.project import MonitorCreate, MonitorOut, MonitorUpdate
 from app.services import audit
@@ -35,7 +34,7 @@ def _list(db: Session, workspace_id: str | None, environment_id: str | None) -> 
 def list_monitors(
     workspace_id: str | None = Query(default=None),
     environment_id: str | None = Query(default=None),
-    user: User = Depends(get_current_user),
+    user: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> list[MonitorOut]:
     if environment_id:
@@ -49,7 +48,7 @@ def list_monitors(
 @router.get("/environments/{environment_id}/monitors", response_model=list[MonitorOut])
 def list_environment_monitors(
     environment_id: str,
-    user: User = Depends(get_current_user),
+    user: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> list[MonitorOut]:
     environment = get_environment(db, environment_id)
@@ -65,7 +64,7 @@ def list_environment_monitors(
 def create_monitor(
     environment_id: str,
     payload: MonitorCreate,
-    user: User = Depends(get_current_user),
+    user: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> MonitorOut:
     environment = get_environment(db, environment_id)
@@ -89,7 +88,7 @@ def create_monitor(
 @router.get("/monitors/{monitor_id}", response_model=MonitorOut)
 def get_monitor_detail(
     monitor_id: str,
-    user: User = Depends(get_current_user),
+    user: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> MonitorOut:
     monitor = get_monitor(db, monitor_id)
@@ -101,7 +100,7 @@ def get_monitor_detail(
 def update_monitor(
     monitor_id: str,
     payload: MonitorUpdate,
-    user: User = Depends(get_current_user),
+    user: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> MonitorOut:
     monitor = get_monitor(db, monitor_id)

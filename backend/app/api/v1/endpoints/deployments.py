@@ -2,9 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.v1.access import authorize_environment, get_environment
-from app.api.v1.deps import get_current_user, require_role
+from app.api.v1.deps import Principal, get_principal, require_role
 from app.core.database import get_db
-from app.models.identity import User
 from app.models.project import Environment, Project
 from app.models.release import Deployment
 from app.schemas.release import DeploymentCreate, DeploymentOut
@@ -18,7 +17,7 @@ router = APIRouter(tags=["deployments"])
 def list_deployments(
     workspace_id: str = Query(...),
     limit: int = Query(default=100, le=500),
-    user: User = Depends(get_current_user),
+    user: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> list[DeploymentOut]:
     require_role(db, workspace_id, user, "viewer")
@@ -37,7 +36,7 @@ def list_deployments(
 @router.get("/environments/{environment_id}/deployments", response_model=list[DeploymentOut])
 def list_environment_deployments(
     environment_id: str,
-    user: User = Depends(get_current_user),
+    user: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> list[DeploymentOut]:
     environment = get_environment(db, environment_id)
@@ -59,7 +58,7 @@ def list_environment_deployments(
 def create_deployment(
     environment_id: str,
     payload: DeploymentCreate,
-    user: User = Depends(get_current_user),
+    user: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> DeploymentOut:
     environment = get_environment(db, environment_id)
@@ -85,7 +84,7 @@ def create_deployment(
 @router.get("/deployments/{deployment_id}", response_model=DeploymentOut)
 def get_deployment_detail(
     deployment_id: str,
-    user: User = Depends(get_current_user),
+    user: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> DeploymentOut:
     deployment = db.get(Deployment, deployment_id)

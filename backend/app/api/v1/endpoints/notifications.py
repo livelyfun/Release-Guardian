@@ -1,9 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.v1.deps import get_current_user, require_role
+from app.api.v1.deps import Principal, get_principal, require_role
 from app.core.database import get_db
-from app.models.identity import User
 from app.models.release import NotificationAttempt, NotificationChannel
 from app.schemas.release import (
     NotificationAttemptOut,
@@ -16,7 +15,7 @@ from app.services import audit
 router = APIRouter(tags=["notifications"])
 
 
-def _authorize_channel(db: Session, channel_id: str, user: User, role: str) -> NotificationChannel:
+def _authorize_channel(db: Session, channel_id: str, user: Principal, role: str) -> NotificationChannel:
     channel = db.get(NotificationChannel, channel_id)
     if channel is None:
         raise HTTPException(
@@ -32,7 +31,7 @@ def _authorize_channel(db: Session, channel_id: str, user: User, role: str) -> N
 )
 def list_channels(
     workspace_id: str,
-    user: User = Depends(get_current_user),
+    user: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> list[NotificationChannelOut]:
     require_role(db, workspace_id, user, "viewer")
@@ -53,7 +52,7 @@ def list_channels(
 def create_channel(
     workspace_id: str,
     payload: NotificationChannelCreate,
-    user: User = Depends(get_current_user),
+    user: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> NotificationChannelOut:
     require_role(db, workspace_id, user, "admin")
@@ -84,7 +83,7 @@ def create_channel(
 def update_channel(
     channel_id: str,
     payload: NotificationChannelUpdate,
-    user: User = Depends(get_current_user),
+    user: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> NotificationChannelOut:
     channel = _authorize_channel(db, channel_id, user, "admin")
@@ -114,7 +113,7 @@ def update_channel(
 @router.delete("/notification-channels/{channel_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_channel(
     channel_id: str,
-    user: User = Depends(get_current_user),
+    user: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> None:
     channel = _authorize_channel(db, channel_id, user, "admin")
@@ -136,7 +135,7 @@ def delete_channel(
 )
 def list_attempts(
     channel_id: str,
-    user: User = Depends(get_current_user),
+    user: Principal = Depends(get_principal),
     db: Session = Depends(get_db),
 ) -> list[NotificationAttemptOut]:
     channel = _authorize_channel(db, channel_id, user, "viewer")
