@@ -40,7 +40,10 @@ Invoke tools as `backend/.venv/bin/pytest`, `backend/.venv/bin/ruff`, etc.
 
 ## Implementation status
 
-Engineering foundation and first vertical slice are implemented: identity/workspaces,
-projects/environments, monitors, runs (inline/Celery), deployments, incidents, API keys,
-audit logs, and the dashboard. Remaining master-plan phases (release verification suites,
-baselines/regression detection, notification delivery, billing, AI assistance) are not yet built.
+Engineering foundation and vertical slices are implemented: identity/workspaces,
+projects/environments, monitors, runs (inline/Celery), the due-monitor scheduler,
+deployment-triggered runs, latency baselines and regression detection, incidents with
+webhook notification attempts, API keys, audit logs, and the dashboard. Remaining
+master-plan phases (full Playwright/Lighthouse execution, artifact storage, escalation,
+billing, AI assistance) are not yet built. See
+`docs/master-plan/release-guardian/14-IMPLEMENTATION-ROADMAP.md`.
