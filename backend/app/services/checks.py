@@ -1,28 +1,14 @@
 import time
-from dataclasses import dataclass, field
 from urllib.parse import urljoin
 
 import httpx
 
 from app.core.config import settings
+from app.services.browser import perform_browser_check
+from app.services.outcomes import CheckOutcome, StepOutcome
 from app.services.url_guard import validate_url
 
-
-@dataclass
-class StepOutcome:
-    name: str
-    status: str
-    duration_ms: int
-    error: str | None = None
-    evidence: dict = field(default_factory=dict)
-
-
-@dataclass
-class CheckOutcome:
-    status: str
-    duration_ms: int
-    steps: list[StepOutcome]
-    summary: dict
+__all__ = ["CheckOutcome", "StepOutcome", "perform_check", "perform_http_check"]
 
 
 def _fetch_with_redirects(url: str) -> tuple[httpx.Response, list[str]]:
@@ -108,3 +94,10 @@ def perform_http_check(monitor) -> CheckOutcome:
     overall = "passed" if steps and all(step.status == "passed" for step in steps) else "failed"
     duration_ms = int((time.perf_counter() - started) * 1000)
     return CheckOutcome(status=overall, duration_ms=duration_ms, steps=steps, summary=summary)
+
+
+def perform_check(monitor) -> CheckOutcome:
+    config = monitor.config or {}
+    if monitor.kind == "browser" and config.get("steps"):
+        return perform_browser_check(monitor)
+    return perform_http_check(monitor)

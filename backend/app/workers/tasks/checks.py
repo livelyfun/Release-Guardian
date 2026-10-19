@@ -3,7 +3,7 @@ from app.models.base import utcnow
 from app.models.execution import Run, StepResult
 from app.models.project import Environment, Monitor, Project
 from app.models.release import UsageRecord
-from app.services.checks import perform_http_check
+from app.services.checks import perform_check
 from app.services.incidents import (
     open_or_refresh_incident,
     open_regression_incident,
@@ -34,7 +34,7 @@ def execute_run(run_id: str) -> dict:
         run.started_at = utcnow()
         db.commit()
 
-        outcome = perform_http_check(monitor)
+        outcome = perform_check(monitor)
 
         for index, step in enumerate(outcome.steps):
             db.add(
