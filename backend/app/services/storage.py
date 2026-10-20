@@ -92,7 +92,11 @@ def upload_bytes(
 ) -> dict[str, Any]:
     """Upload raw bytes and return metadata including a signed URL."""
     key = _object_key(run_id, kind, extension)
-    client = _client()
+    try:
+        client = _client()
+    except StorageError:
+        ARTIFACT_UPLOADS.inc(kind=kind, status="failure")
+        raise
 
     extra_args: dict[str, Any] = {
         "Metadata": {
@@ -129,7 +133,11 @@ def upload_fileobj(
 ) -> dict[str, Any]:
     """Upload from a file-like object (large traces/HAR archives)."""
     key = _object_key(run_id, kind, extension)
-    client = _client()
+    try:
+        client = _client()
+    except StorageError:
+        ARTIFACT_UPLOADS.inc(kind=kind, status="failure")
+        raise
 
     extra_args: dict[str, Any] = {
         "Metadata": {"run_id": run_id, "kind": kind},

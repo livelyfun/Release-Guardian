@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from app.models.execution import Run
 from app.models.project import Monitor
 from app.models.release import Deployment
+from app.services.capacity import active_run_for_monitor
 from app.workers.dispatch import dispatch_run
 
 
@@ -19,6 +20,11 @@ def enqueue_runs_for_environment(
     )
     run_ids: list[str] = []
     for monitor in monitors:
+        # Backpressure: do not stack deployment runs behind an in-flight check
+        # for the same monitor.  The in-flight run already represents current
+        # state for that target.
+        if active_run_for_monitor(db, monitor.id) is not None:
+            continue
         run = Run(
             monitor_id=monitor.id,
             environment_id=monitor.environment_id,

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.v1.access import authorize_monitor, authorize_run, get_monitor, get_run
@@ -8,6 +8,12 @@ from app.models.execution import Run
 from app.models.project import Environment, Project
 from app.schemas.execution import RunCreate, RunDetailOut, RunOut
 from app.services import audit
+from app.services.capacity import (
+    CapacityError,
+    MonitorBusyError,
+    WorkspaceCapacityError,
+    ensure_capacity,
+)
 from app.workers.dispatch import dispatch_run
 
 router = APIRouter(tags=["runs"])
@@ -26,6 +32,17 @@ def trigger_run(
 ) -> RunOut:
     monitor = get_monitor(db, monitor_id)
     workspace_id = authorize_monitor(db, monitor, user, "developer")
+
+    try:
+        ensure_capacity(db, monitor, workspace_id)
+    except WorkspaceCapacityError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)
+        ) from exc
+    except MonitorBusyError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except CapacityError as exc:  # pragma: no cover - defensive
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
 
     run = Run(
         monitor_id=monitor.id,

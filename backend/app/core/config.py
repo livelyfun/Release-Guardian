@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     rate_limit_auth_per_minute: int = 20
     rate_limit_api_per_minute: int = 300
 
+    # Backpressure: bound queued/executing work per monitor and workspace.
+    max_active_runs_per_monitor: int = 1
+    max_active_runs_per_workspace: int = 50
+
     log_level: str = "INFO"
     metrics_enabled: bool = True
     readiness_check_redis: bool = True
