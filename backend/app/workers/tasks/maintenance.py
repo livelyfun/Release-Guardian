@@ -11,19 +11,28 @@ the same active-run rules, and terminal updates are idempotent.
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.core.metrics import STALE_RUNS
+from app.core.metrics import (
+    OLDEST_PENDING_RUN_AGE,
+    PENDING_RUNS,
+    STALE_RUNS,
+    SWEEPER_LAST_SUCCESS,
+)
 from app.models.base import utcnow
 from app.models.execution import Run
 from app.services.runs import refresh_deployment_status
 from app.workers.dispatch import dispatch_run
 
 logger = logging.getLogger("release_guardian.maintenance")
+
+
+def _as_utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value
 
 
 def sweep_stale_runs(db: Session | None = None) -> dict:
@@ -76,9 +85,17 @@ def sweep_stale_runs(db: Session | None = None) -> dict:
                 refresh_deployment_status(session, run.deployment_id)
 
         session.commit()
+
+        pending_query = session.query(Run).filter(Run.status == "pending")
+        PENDING_RUNS.set(pending_query.count())
+        oldest = pending_query.order_by(Run.created_at).first()
+        OLDEST_PENDING_RUN_AGE.set(
+            max(0.0, (now - _as_utc(oldest.created_at)).total_seconds()) if oldest else 0.0
+        )
     finally:
         if owned:
             session.close()
+        SWEEPER_LAST_SUCCESS.set(now.timestamp())
 
     if redispatched or timed_out or dispatch_failures:
         logger.info(

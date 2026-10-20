@@ -1,9 +1,11 @@
+import time
 from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.database import SessionLocal
-from app.core.metrics import SCHEDULER_ENQUEUED
+from app.core.metrics import QUEUE_DEPTH, SCHEDULER_ENQUEUED, SCHEDULER_LAST_SUCCESS
 from app.models.base import utcnow
 from app.models.execution import Run
 from app.models.project import Monitor
@@ -17,6 +19,15 @@ def _as_utc(value: datetime | None) -> datetime | None:
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
     return value
+
+
+def _record_queue_depth() -> None:
+    try:
+        from app.services.locks import _client
+
+        QUEUE_DEPTH.set(_client().llen("release_guardian"))
+    except Exception:  # noqa: BLE001 - queue metrics are best-effort
+        return
 
 
 def enqueue_due_monitors(db: Session | None = None) -> dict:
@@ -66,4 +77,7 @@ def enqueue_due_monitors(db: Session | None = None) -> dict:
 
     if created:
         SCHEDULER_ENQUEUED.inc(len(created))
+    SCHEDULER_LAST_SUCCESS.set(time.time())
+    if settings.worker_mode == "celery":
+        _record_queue_depth()
     return {"queued": len(created), "run_ids": created}

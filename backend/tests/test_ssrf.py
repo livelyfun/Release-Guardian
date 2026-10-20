@@ -1,4 +1,5 @@
 import pytest
+
 from app.services.url_guard import UrlValidationError, validate_url
 
 

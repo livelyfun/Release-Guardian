@@ -1,6 +1,5 @@
 import app.services.checks as checks_module
 from app.services.checks import CheckOutcome, StepOutcome
-
 from tests.conftest import auth_headers, register
 
 

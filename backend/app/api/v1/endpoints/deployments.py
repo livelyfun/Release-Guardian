@@ -1,3 +1,6 @@
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.orm import Session
+
 from app.api.v1.access import authorize_environment, get_environment
 from app.api.v1.deps import Principal, get_principal, require_role
 from app.core.database import get_db
@@ -6,8 +9,6 @@ from app.models.release import Deployment
 from app.schemas.release import DeploymentCreate, DeploymentOut
 from app.services import audit
 from app.services.runs import enqueue_runs_for_environment, refresh_deployment_status
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
 
 router = APIRouter(tags=["deployments"])
 

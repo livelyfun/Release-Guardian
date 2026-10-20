@@ -1,3 +1,6 @@
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+
 from app.api.v1.deps import get_current_user, get_membership, require_role
 from app.core.database import get_db
 from app.models.identity import AuditLog, Membership, User, Workspace
@@ -10,8 +13,6 @@ from app.schemas.identity import (
 )
 from app.services import audit
 from app.services.slug import slugify, unique_slug
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
 
 router = APIRouter(tags=["workspaces"])
 

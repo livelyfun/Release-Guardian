@@ -2,10 +2,11 @@ import json
 from datetime import timedelta
 from types import SimpleNamespace
 
+import pytest
+
 import app.api.v1.endpoints.runs as runs_endpoint
 import app.services.checks as checks_module
 import app.workers.tasks.checks as worker_checks
-import pytest
 from app.core.config import Settings, settings
 from app.core.database import SessionLocal
 from app.core.metrics import render_metrics
@@ -18,7 +19,6 @@ from app.services.secret_scanner import mask_secret, scan_config
 from app.services.url_guard import UrlValidationError, validate_url
 from app.workers.tasks import maintenance
 from app.workers.tasks import scheduler as scheduler_module
-
 from tests.conftest import auth_headers, register
 
 

@@ -1,3 +1,6 @@
+from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy.orm import Session
+
 from app.api.v1.access import (
     authorize_environment,
     authorize_monitor,
@@ -9,8 +12,6 @@ from app.core.database import get_db
 from app.models.project import Environment, Monitor, Project
 from app.schemas.project import MonitorCreate, MonitorOut, MonitorUpdate
 from app.services import audit
-from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy.orm import Session
 
 router = APIRouter(tags=["monitors"])
 

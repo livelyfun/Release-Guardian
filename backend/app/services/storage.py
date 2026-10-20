@@ -110,7 +110,7 @@ def upload_bytes(
 
     try:
         client.put_object(Bucket=_bucket(), Key=key, Body=data, **extra_args)
-        url = _presigned_url(client, key, 7 * 24 * 60 * 60)
+        url = _presigned_url(client, key, settings.artifact_url_ttl_seconds)
     except (ClientError, BotoCoreError) as exc:
         ARTIFACT_UPLOADS.inc(kind=kind, status="failure")
         raise StorageError(f"Failed to upload artifact: {exc}") from exc
@@ -147,7 +147,7 @@ def upload_fileobj(
 
     try:
         client.upload_fileobj(fileobj, _bucket(), key, ExtraArgs=extra_args)
-        url = _presigned_url(client, key, 7 * 24 * 60 * 60)
+        url = _presigned_url(client, key, settings.artifact_url_ttl_seconds)
     except (ClientError, BotoCoreError) as exc:
         ARTIFACT_UPLOADS.inc(kind=kind, status="failure")
         raise StorageError(f"Failed to upload artifact: {exc}") from exc
@@ -160,9 +160,10 @@ def upload_fileobj(
     }
 
 
-def get_signed_url(storage_key: str, expires_in: int = 7 * 24 * 60 * 60) -> str:
+def get_signed_url(storage_key: str, expires_in: int | None = None) -> str:
     """Return a short-lived signed URL for an existing artifact key."""
-    return _presigned_url(_client(), storage_key, expires_in)
+    ttl = expires_in if expires_in is not None else settings.artifact_url_ttl_seconds
+    return _presigned_url(_client(), storage_key, ttl)
 
 
 def list_artifacts(
@@ -191,7 +192,7 @@ def list_artifacts(
         items.append(
             {
                 "storage_key": key,
-                "url": _presigned_url(client, key, 7 * 24 * 60 * 60),
+                "url": _presigned_url(client, key, settings.artifact_url_ttl_seconds),
                 "kind": _kind_from_key(relative),
                 "size_bytes": obj["Size"],
                 "last_modified": obj["LastModified"].isoformat(),

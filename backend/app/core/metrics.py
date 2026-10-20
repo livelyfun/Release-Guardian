@@ -230,3 +230,25 @@ STALE_RUNS = _register(
         ("action",),
     )
 )
+SCHEDULER_LAST_SUCCESS = _register(
+    Gauge(
+        "rg_scheduler_last_success_timestamp_seconds",
+        "Unix timestamp of the last successful due-monitor scheduler tick.",
+    )
+)
+SWEEPER_LAST_SUCCESS = _register(
+    Gauge(
+        "rg_sweeper_last_success_timestamp_seconds",
+        "Unix timestamp of the last successful stale-run sweep.",
+    )
+)
+QUEUE_DEPTH = _register(
+    Gauge("rg_queue_depth", "Approximate number of queued Celery tasks.")
+)
+PENDING_RUNS = _register(Gauge("rg_pending_runs", "Runs currently in pending state."))
+OLDEST_PENDING_RUN_AGE = _register(
+    Gauge(
+        "rg_oldest_pending_run_age_seconds",
+        "Age in seconds of the oldest pending run (0 when the queue is empty).",
+    )
+)

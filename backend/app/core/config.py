@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     s3_region: str = "us-east-1"
     s3_use_ssl: bool = True
     s3_force_path_style: bool = False
+    artifact_url_ttl_seconds: int = 900
 
     cors_origins: list[str] = ["http://localhost:3000"]
 
