@@ -73,6 +73,8 @@ export interface Run {
   summary: Record<string, unknown> | null;
   steps: StepResult[];
   created_at: string;
+  screenshot_url: string | null;
+  screenshot_key: string | null;
 }
 
 export interface Deployment {
