@@ -11,6 +11,7 @@ from app.api.v1.endpoints import (
     notifications,
     projects,
     runs,
+    usage,
     workspaces,
 )
 from app.core.rate_limit import api_rate_limit
@@ -28,3 +29,4 @@ api_router.include_router(incidents.router)
 api_router.include_router(notifications.router)
 api_router.include_router(api_keys.router)
 api_router.include_router(artifacts.router)
+api_router.include_router(usage.router)

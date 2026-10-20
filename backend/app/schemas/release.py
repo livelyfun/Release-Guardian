@@ -104,3 +104,11 @@ class IncidentEventOut(ORMModel):
     message: str
     meta: dict
     created_at: datetime
+
+
+class UsageRecordOut(ORMModel):
+    id: str
+    workspace_id: str
+    metric: str
+    quantity: float
+    recorded_at: datetime

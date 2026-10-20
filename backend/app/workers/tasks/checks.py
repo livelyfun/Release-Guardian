@@ -1,13 +1,15 @@
 from app.core.database import SessionLocal
 from app.models.base import utcnow
-from app.models.execution import Run, StepResult, Artifact
+from app.models.execution import Run, StepResult, Artifact, EscalationRule
 from app.models.project import Environment, Monitor, Project
 from app.models.release import UsageRecord
+from app.models.release import Incident, IncidentEvent
 from app.services.checks import perform_check
 from app.services.incidents import (
     open_or_refresh_incident,
     open_regression_incident,
     resolve_open_incidents,
+    _escalate_incident,
 )
 from app.services.notifications import dispatch as notification_dispatch
 from app.services.regression import summarize as summarize_regression
@@ -67,8 +69,14 @@ def execute_run(run_id: str) -> dict:
         opened_incidents = []
         resolved_incidents = []
         if project is not None and environment is not None:
+            # Track usage per check type
+            metric = "runs"
+            if monitor.kind == "lighthouse":
+                metric = "lighthouse_checks"
+            elif monitor.kind == "browser":
+                metric = "browser_checks"
             db.add(
-                UsageRecord(workspace_id=project.workspace_id, metric="runs", quantity=1.0)
+                UsageRecord(workspace_id=project.workspace_id, metric=metric, quantity=1.0)
             )
             if outcome.status == "failed":
                 reason = outcome.steps[-1].error or "Check failed"
