@@ -18,6 +18,8 @@
 |---|---|---|---|
 | `/workspaces` | GET, POST | authenticated | list/create |
 | `/workspaces/{id}` | GET/PATCH/DELETE | owner/admin | tenant boundaries |
+| `/workspaces/{id}/members` | GET/POST | admin for writes | invite existing users; list includes email/name |
+| `/workspaces/{id}/members/{membership_id}` | PATCH/DELETE | admin; owner-only for owner roles | last-owner safeguard |
 | `/projects` | CRUD | workspace member | tenant scoped |
 | `/environments` | CRUD | workspace member | |
 | `/check-configs` | CRUD | workspace member | schedule_cron |

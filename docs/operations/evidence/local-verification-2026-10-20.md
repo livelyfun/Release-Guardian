@@ -112,7 +112,8 @@ gates.
 - Browser journey step builder (create/edit), trace/HAR/per-step screenshot
   options, Lighthouse form-factor/report controls.
 - CSV exports for runs and incidents, plus `scripts/rg.py` CLI smoke-checked
-  with `--help`/ruff.
+  with `--help`/ruff and an end-to-end `login --register` + `workspaces`
+  against a local API.
 - Deployment comparison, regression suppressions, SMTP email transport, and
   GitHub commit statuses (mocked tests; no live provider calls).
 - HAR credential redaction and URL query redaction.
