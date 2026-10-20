@@ -1,10 +1,25 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, JSON, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.models.base import IdMixin, TimestampMixin, utcnow
+
+
+class EscalationRule(IdMixin, TimestampMixin, Base):
+    __tablename__ = "escalation_rules"
+    __table_args__ = (UniqueConstraint("workspace_id", "name", name="uq_escalation_rule_ws_name"),)
+
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(120))
+    severity: Mapped[str] = mapped_column(String(20), default="medium")  # critical, high, medium, low
+    minutes_to_escalate: Mapped[int] = mapped_column(Integer, default=30)  # minutes before next escalation
+    channel_kind: Mapped[str] = mapped_column(String(30), default="webhook")  # webhook, email
+    channel_config_key: Mapped[str | None] = mapped_column(String(100), nullable=True)  # config key e.g. "webhook_url"
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
 class Run(IdMixin, TimestampMixin, Base):
