@@ -13,7 +13,7 @@ import app.workers.tasks.checks as worker_checks
 from app.core.config import Settings, settings
 from app.core.database import SessionLocal
 from app.core.metrics import render_metrics
-from app.core.production import production_config_issues
+from app.core.production import production_config_issues, validate_production_settings
 from app.core.rate_limit import _use_redis
 from app.core.security import sign_webhook, verify_webhook_signature
 from app.models.base import utcnow
@@ -309,6 +309,26 @@ def test_production_config_guard_accepts_hardened_config():
         worker_mode="celery",
     )
     assert production_config_issues(safe) == []
+
+
+def test_production_guard_normalizes_case_and_rejects_bad_values():
+    config = Settings(
+        _env_file=None,
+        environment=" Production ",
+        jwt_secret="a" * 48,
+        webhook_signing_secret="b" * 32,
+        database_url="postgresql+psycopg://user:pass@db:5432/rg",
+        allow_private_urls=False,
+        cors_origins=["https://app.example.com"],
+        worker_mode="Celery",
+        rate_limit_backend="bogus",
+    )
+    assert config.environment == "production"
+    assert config.worker_mode == "celery"
+    issues = production_config_issues(config)
+    assert any("RATE_LIMIT_BACKEND" in issue for issue in issues)
+    with pytest.raises(RuntimeError, match="Refusing to start"):
+        validate_production_settings(config)
 
 
 def test_rate_limit_backend_selection(monkeypatch):

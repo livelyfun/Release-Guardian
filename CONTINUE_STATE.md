@@ -5,7 +5,7 @@
 - Branch: `main`
 - Remote: `git@github.com:livelyfun/Release-Guardian.git`
 - Latest commit: `git log -1`
-- Backend tests: 75 passed, 1 warning
+- Backend tests: 76 passed, 1 warning
 - Backend lint: `cd backend && .venv/bin/ruff check app tests`
 - Scripts lint: `backend/.venv/bin/ruff check scripts --config backend/pyproject.toml`
 - Frontend: lint, `tsc --noEmit`, and `npm run build` pass

@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -52,6 +53,11 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:3000"]
 
     webhook_signing_secret: str = "change-me-webhook-secret"
+
+    @field_validator("environment", "worker_mode", "rate_limit_backend")
+    @classmethod
+    def _normalize_choice(cls, value: str) -> str:
+        return value.strip().lower()
 
 
 @lru_cache

@@ -40,12 +40,15 @@ def production_config_issues(config: Settings) -> list[str]:
     if config.worker_mode not in {"celery", "inline"}:
         issues.append("WORKER_MODE must be 'celery' or 'inline'")
 
+    if config.rate_limit_backend not in {"auto", "memory", "redis"}:
+        issues.append("RATE_LIMIT_BACKEND must be 'auto', 'memory', or 'redis'")
+
     return issues
 
 
 def validate_production_settings(config: Settings) -> None:
     """Raise when production starts with unsafe or incomplete configuration."""
-    if config.environment != "production":
+    if config.environment.strip().lower() != "production":
         return
     issues = production_config_issues(config)
     if issues:

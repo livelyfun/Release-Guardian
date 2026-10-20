@@ -54,6 +54,7 @@ and egress-firewall verification are still required before production sign-off.
 | Metrics labeled by raw unmatched paths | Unbounded cardinality / memory growth | Unmatched requests share `<unmatched>` |
 | Unvalidated artifact key could acquire a signed URL | Cross-tenant bearer URL | Ownership lookup before signing |
 | Backup drill interpolated `DRILL_DB` into SQL | Accidental/injected identifier | Strict identifier validation + `umask 077` dumps |
+| Uppercase `ENVIRONMENT=Production` bypassed the startup guard | Unsafe production boot | Normalize `environment`/`worker_mode`/`rate_limit_backend`; guard rejects unknown limiter backends |
 
 ## Residual risks
 
