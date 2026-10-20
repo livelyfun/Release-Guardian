@@ -16,6 +16,7 @@ evidence; a local test does not satisfy a staging/production requirement.
 | Rollback drill | Procedure; staging drill pending | [BACKUP-RESTORE.md](BACKUP-RESTORE.md) |
 | Security review | Self-review complete; external test pending | [SECURITY-REVIEW.md](SECURITY-REVIEW.md) |
 | Cost validation | Model complete; prices/volumes pending | [COST-VALIDATION.md](COST-VALIDATION.md) |
+| Local verification (tests, migrations, guard, smoke) | Complete for local scope | [evidence/local-verification-2026-10-20.md](evidence/local-verification-2026-10-20.md) |
 
 **M8 is not signed off until every unchecked item below is complete.**
 

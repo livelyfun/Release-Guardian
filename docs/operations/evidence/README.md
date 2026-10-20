@@ -7,6 +7,7 @@ committed so a release can point at the exact run that produced a result.
 |---|---|---|
 | `loadtest-local-2026-10-20.json` | Local, single uvicorn + SQLite + inline worker | Harness validation only; not a staging capacity claim |
 | `secret-scan-local-2026-10-20.json` | Local developer shell | Zero findings; values are masked by the scanner |
+| `local-verification-2026-10-20.md` | Local developer shell | Tests, migrations, guard, smoke, and compose checks with explicit gaps |
 
 Staging and production evidence must include the operator, timestamp, stack
 revision, and the raw script output. Do not edit a report after the fact; add a
