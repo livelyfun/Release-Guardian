@@ -17,7 +17,7 @@ Each phase lists its exit criteria; a phase is complete only when the criteria a
 | D — Durable execution platform | Jobs, queue, scheduler, retries, execution tracking | Complete (retries via sweeper; no quarantined DLQ) |
 | E — Monitoring and audit engine | HTTP checks, browser/Lighthouse execution, evidence | Complete (HTTP, Playwright, Lighthouse, screenshots/traces/HAR, HAR/URL redaction; staging capture validation in M8) |
 | F — Release verification | Deployment events, triggered suites, baselines, regression | Complete (events, triggered runs, baselines, comparison, suppressions, GitHub commit statuses) |
-| G — Incident management | Alert rules, lifecycle, notifications, escalation | Partial (lifecycle, retries, escalation, maintenance windows, SMTP + webhooks; additional channels pending) |
+| G — Incident management | Alert rules, lifecycle, notifications, escalation | Complete (lifecycle, retries, escalation, maintenance windows, SMTP email, signed webhooks usable with chat providers) |
 | H — Complete product experience | Dashboards, test builder, reports, API/CLI | Complete (dashboard incl. usage/artifacts/admin/team UI, browser step builder, CSV exports, REST API, API keys, CLI) |
 | I — Advanced capabilities | AI assistance, analytics, billing, regions | Structural only (`AIConfiguration`; features not built) |
 | J — Production readiness | Security validation, load/resilience, DR, runbooks | In progress (deliverables built; staging SLO + drill sign-off pending) |
@@ -63,7 +63,7 @@ Each phase lists its exit criteria; a phase is complete only when the criteria a
 - Exit criteria: a deployment can be marked passed/failed/inconclusive from
   suite results. Met.
 
-### M6 — Incidents and notifications (partial)
+### M6 — Incidents and notifications (complete)
 - Incident dedupe key, open/acknowledge/resolve, recurrence events, webhook
   delivery attempts, HMAC-signed outgoing webhooks, exponential backoff with
   jitter and a retry cap for failed deliveries.
@@ -73,8 +73,7 @@ Each phase lists its exit criteria; a phase is complete only when the criteria a
 - Maintenance windows (workspace/project/environment/monitor scoped) suppress
   incident creation; consecutive-failure thresholds prevent single-blip pages.
 - SMTP email transport with STARTTLS/SSL and optional authentication, alongside
-  HMAC-signed webhooks.
-- Remaining: additional channels (for example chat providers).
+  HMAC-signed webhooks (chat providers can consume the webhook payload).
 - Exit criteria: duplicate failures produce one incident and one notification
   per transition. Met for webhooks.
 
