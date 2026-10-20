@@ -5,7 +5,7 @@
 - Branch: `main`
 - Remote: `git@github.com:livelyfun/Release-Guardian.git`
 - Latest commit: `git log -1`
-- Backend tests: 89 passed, 1 warning
+- Backend tests: 90 passed, 1 warning
 - Backend lint: `cd backend && .venv/bin/ruff check app tests`
 - Scripts lint: `backend/.venv/bin/ruff check scripts --config backend/pyproject.toml`
 - Frontend: lint, `tsc --noEmit`, and `npm run build` pass
@@ -51,7 +51,7 @@
 2. M4: Playwright traces/HAR and step-level screenshots; artifact redaction.
 3. M5: previous-known-good comparison, CI status checks, regression suppressions.
 4. M6: maintenance windows, notification retry/backoff, real email transport.
-5. M7: exports, CLI.
+5. M7 is complete.
 6. I: AI assistance + evaluation harness, analytics, billing plans, regions.
 
 ## Quick commands

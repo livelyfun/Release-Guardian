@@ -33,6 +33,8 @@
 | `/workspaces/{id}/artifacts/signed-url?artifact_key=` | GET | workspace member | short-lived signed URL; verifies artifact ownership |
 | `/baselines` | GET/PATCH | workspace member | N-samples, rotation |
 | `/incidents` | GET/PATCH/POST | workspace member | lifecycle, ack/resolve |
+| `/runs/export.csv?workspace_id=` | GET | workspace member | CSV export of runs |
+| `/incidents/export.csv?workspace_id=` | GET | workspace member | CSV export of incidents |
 | `/incidents/{id}/events` | GET | workspace member | timeline (append-only) |
 | `/notification-channels` | CRUD | admin | config encrypted |
 | `/integrations` | CRUD | admin | GitHub (least privilege) |

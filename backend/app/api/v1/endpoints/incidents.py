@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.v1.deps import Principal, get_principal, require_role
@@ -7,6 +7,7 @@ from app.models.base import utcnow
 from app.models.release import Incident, IncidentEvent
 from app.schemas.release import IncidentOut, IncidentUpdate
 from app.services import audit
+from app.services.export import csv_response
 
 router = APIRouter(tags=["incidents"])
 
@@ -32,6 +33,50 @@ def list_incidents(
         query = query.filter(Incident.status == status_filter)
     incidents = query.order_by(Incident.opened_at.desc()).all()
     return [IncidentOut.model_validate(incident) for incident in incidents]
+
+
+@router.get("/incidents/export.csv")
+def export_incidents(
+    workspace_id: str = Query(...),
+    status_filter: str | None = Query(default=None, alias="status"),
+    user: Principal = Depends(get_principal),
+    db: Session = Depends(get_db),
+) -> Response:
+    require_role(db, workspace_id, user, "viewer")
+    query = db.query(Incident).filter(Incident.workspace_id == workspace_id)
+    if status_filter:
+        query = query.filter(Incident.status == status_filter)
+    incidents = query.order_by(Incident.opened_at.desc()).all()
+    return csv_response(
+        [
+            "id",
+            "title",
+            "severity",
+            "status",
+            "project_id",
+            "environment_id",
+            "dedupe_key",
+            "opened_at",
+            "acknowledged_at",
+            "resolved_at",
+        ],
+        [
+            [
+                incident.id,
+                incident.title,
+                incident.severity,
+                incident.status,
+                incident.project_id,
+                incident.environment_id,
+                incident.dedupe_key,
+                incident.opened_at.isoformat() if incident.opened_at else None,
+                incident.acknowledged_at.isoformat() if incident.acknowledged_at else None,
+                incident.resolved_at.isoformat() if incident.resolved_at else None,
+            ]
+            for incident in incidents
+        ],
+        "incidents.csv",
+    )
 
 
 @router.get("/incidents/{incident_id}", response_model=IncidentOut)

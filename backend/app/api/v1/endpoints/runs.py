@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.v1.access import authorize_monitor, authorize_run, get_monitor, get_run
 from app.api.v1.deps import Principal, get_principal, require_role
 from app.core.database import get_db
 from app.models.execution import Artifact, Run
-from app.models.project import Environment, Project
+from app.models.project import Environment, Monitor, Project
 from app.schemas.execution import ArtifactOut, RunCreate, RunDetailOut, RunOut
 from app.services import audit
 from app.services.capacity import (
@@ -14,6 +14,7 @@ from app.services.capacity import (
     WorkspaceCapacityError,
     ensure_capacity,
 )
+from app.services.export import csv_response
 from app.workers.dispatch import dispatch_run
 
 router = APIRouter(tags=["runs"])
@@ -105,6 +106,56 @@ def list_runs(
         .all()
     )
     return [RunOut.model_validate(run) for run in runs]
+
+
+@router.get("/runs/export.csv")
+def export_runs(
+    workspace_id: str = Query(...),
+    limit: int = Query(default=5000, le=20000),
+    user: Principal = Depends(get_principal),
+    db: Session = Depends(get_db),
+) -> Response:
+    require_role(db, workspace_id, user, "viewer")
+    rows = (
+        db.query(Run, Monitor.name.label("monitor_name"), Monitor.kind.label("monitor_kind"))
+        .join(Monitor, Monitor.id == Run.monitor_id)
+        .join(Environment, Environment.id == Run.environment_id)
+        .join(Project, Project.id == Environment.project_id)
+        .filter(Project.workspace_id == workspace_id)
+        .order_by(Run.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return csv_response(
+        [
+            "id",
+            "monitor",
+            "kind",
+            "status",
+            "trigger",
+            "started_at",
+            "finished_at",
+            "duration_ms",
+            "deployment_id",
+            "created_at",
+        ],
+        [
+            [
+                run.id,
+                monitor_name,
+                monitor_kind,
+                run.status,
+                run.trigger,
+                run.started_at.isoformat() if run.started_at else None,
+                run.finished_at.isoformat() if run.finished_at else None,
+                run.duration_ms,
+                run.deployment_id,
+                run.created_at.isoformat(),
+            ]
+            for run, monitor_name, monitor_kind in rows
+        ],
+        "runs.csv",
+    )
 
 
 @router.get("/runs/{run_id}", response_model=RunDetailOut)

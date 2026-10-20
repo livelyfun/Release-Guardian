@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { Badge, ErrorNotice, PageHeader, Spinner, formatDate } from "@/components/ui";
+import { apiDownload, ApiError } from "@/lib/api";
 import { useActiveWorkspaceId, useApi } from "@/lib/hooks";
 import type { Incident } from "@/lib/types";
 
@@ -10,10 +12,34 @@ export default function IncidentsPage() {
   const { data, error, loading } = useApi<Incident[]>(
     workspaceId ? `/incidents?workspace_id=${workspaceId}` : null,
   );
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+
+  async function exportCsv() {
+    if (!workspaceId) return;
+    setExporting(true);
+    setExportError(null);
+    try {
+      await apiDownload(`/incidents/export.csv?workspace_id=${workspaceId}`, "incidents.csv");
+    } catch (err) {
+      setExportError(err instanceof ApiError ? err.message : "Failed to export incidents");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   return (
     <>
-      <PageHeader title="Incidents" description="Deduplicated failures with lifecycle tracking." />
+      <PageHeader
+        title="Incidents"
+        description="Deduplicated failures with lifecycle tracking."
+        actions={
+          <button className="btn-secondary" onClick={exportCsv} disabled={!workspaceId || exporting}>
+            {exporting ? "Exporting…" : "Export CSV"}
+          </button>
+        }
+      />
+      {exportError ? <div className="mb-4"><ErrorNotice message={exportError} /></div> : null}
       {loading ? (
         <Spinner />
       ) : error ? (

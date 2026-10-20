@@ -77,3 +77,32 @@ export const apiClient = {
   patch: <T>(path: string, body?: unknown) => api<T>(path, { method: "PATCH", body }),
   del: <T>(path: string) => api<T>(path, { method: "DELETE" }),
 };
+
+export async function apiDownload(path: string, filename: string): Promise<void> {
+  const headers = new Headers();
+  const token = getToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+
+  const response = await fetch(`${API_URL}${path}`, { headers });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    const error = payload?.error ?? {};
+    if (response.status === 401 && typeof window !== "undefined") clearTokens();
+    throw new ApiError(
+      response.status,
+      error.message ?? response.statusText,
+      error.code ?? "error",
+      error.details ?? null,
+    );
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}

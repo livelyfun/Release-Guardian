@@ -43,3 +43,5 @@ loadtest-results.json
 .DS_Store
 .idea/
 .vscode/
+.vercel
+.env.local

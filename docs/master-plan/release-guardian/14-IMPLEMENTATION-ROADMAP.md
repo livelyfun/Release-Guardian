@@ -18,7 +18,7 @@ Each phase lists its exit criteria; a phase is complete only when the criteria a
 | E — Monitoring and audit engine | HTTP checks, browser/Lighthouse execution, evidence | Partial (HTTP, Playwright, Lighthouse, screenshots/traces/HAR; artifact redaction pending) |
 | F — Release verification | Deployment events, triggered suites, baselines, regression | Partial (events, triggered runs, baselines, comparison, suppressions; outbound CI status checks pending) |
 | G — Incident management | Alert rules, lifecycle, notifications, escalation | Partial (lifecycle, retries, escalation, maintenance windows; real email transport pending) |
-| H — Complete product experience | Dashboards, test builder, reports, API/CLI | Partial (dashboard incl. usage/artifacts/admin UI, REST API, API keys; test builder/exports/team UI/CLI pending) |
+| H — Complete product experience | Dashboards, test builder, reports, API/CLI | Complete (dashboard incl. usage/artifacts/admin/team UI, browser step builder, CSV exports, REST API, API keys, CLI) |
 | I — Advanced capabilities | AI assistance, analytics, billing, regions | Structural only (`AIConfiguration`; features not built) |
 | J — Production readiness | Security validation, load/resilience, DR, runbooks | In progress (deliverables built; staging SLO + drill sign-off pending) |
 
@@ -72,17 +72,19 @@ Each phase lists its exit criteria; a phase is complete only when the criteria a
 - Exit criteria: duplicate failures produce one incident and one notification
   per transition. Met for webhooks.
 
-### M7 — Product experience and platform API (partial)
+### M7 — Product experience and platform API (complete)
 - Next.js dashboard for workspaces, projects, monitors, runs, deployments,
   incidents, keys, audit, usage totals, artifact previews, escalation rules,
   maintenance windows, team member roles, and regression suppressions.
 - Visual browser-journey step builder (create and edit) with trace, HAR, and
   per-step screenshot options; Lighthouse form-factor and report controls.
 - API-key authentication and workspace role gates.
-- Remaining: exports, CLI.
+- CSV exports for runs and incidents (API + dashboard) and a dependency-free
+  CLI (`scripts/rg.py`) for login, inventory, triggering, deployments, and
+  exports.
 - Exit criteria: a new user completes the core workflow without API calls.
   Met for workspace setup, authoring HTTP/browser/Lighthouse checks, and
-  reviewing results.
+  reviewing results; the CLI covers scripted operator workflows.
 
 ### M8 — Production readiness (in progress)
 - Structured JSON logs with request IDs; `/health`, `/ready`, `/metrics`
