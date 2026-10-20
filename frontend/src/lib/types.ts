@@ -88,6 +88,27 @@ export interface Deployment {
   created_at: string;
 }
 
+export type ComparisonVerdict = "regressed" | "improved" | "unchanged" | "new";
+
+export interface DeploymentMonitorComparison {
+  monitor_id: string;
+  monitor_name: string;
+  current_status: string | null;
+  previous_status: string | null;
+  current_duration_ms: number | null;
+  previous_duration_ms: number | null;
+  duration_delta_pct: number | null;
+  verdict: ComparisonVerdict;
+}
+
+export interface DeploymentComparison {
+  deployment_id: string;
+  status: string;
+  previous_known_good: Deployment | null;
+  monitors: DeploymentMonitorComparison[];
+  summary: Record<string, number>;
+}
+
 export type IncidentStatus = "open" | "acknowledged" | "resolved";
 export type Severity = "critical" | "high" | "medium" | "low";
 

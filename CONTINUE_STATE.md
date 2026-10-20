@@ -5,7 +5,7 @@
 - Branch: `main`
 - Remote: `git@github.com:livelyfun/Release-Guardian.git`
 - Latest commit: `git log -1`
-- Backend tests: 84 passed, 1 warning
+- Backend tests: 88 passed, 1 warning
 - Backend lint: `cd backend && .venv/bin/ruff check app tests`
 - Scripts lint: `backend/.venv/bin/ruff check scripts --config backend/pyproject.toml`
 - Frontend: lint, `tsc --noEmit`, and `npm run build` pass
@@ -31,6 +31,8 @@
 - Browser and Lighthouse runs are routed to dedicated Celery queues consumed
   by an isolated `browser-worker` compose service; Postgres pool sizing is
   configurable; an hourly task prunes artifacts past the retention window.
+- Deployments compare current checks with the previous known-good deployment
+  (API + UI); regression incidents can be suppressed until a timestamp.
 - Artifacts in S3-compatible storage; ownership is checked (artifact → run →
   environment → project) before issuing a 15-minute signed URL.
 - Usage metering by kind (`runs`, `browser_checks`, `lighthouse_checks`).

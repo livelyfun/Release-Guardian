@@ -81,6 +81,25 @@ class DeploymentOut(ORMModel):
     created_at: datetime
 
 
+class DeploymentMonitorComparisonOut(BaseModel):
+    monitor_id: str
+    monitor_name: str
+    current_status: str | None
+    previous_status: str | None
+    current_duration_ms: int | None
+    previous_duration_ms: int | None
+    duration_delta_pct: float | None
+    verdict: Literal["regressed", "improved", "unchanged", "new"]
+
+
+class DeploymentComparisonOut(BaseModel):
+    deployment_id: str
+    status: str
+    previous_known_good: DeploymentOut | None
+    monitors: list[DeploymentMonitorComparisonOut]
+    summary: dict[str, int]
+
+
 class IncidentUpdate(BaseModel):
     status: IncidentStatus | None = None
     severity: Severity | None = None

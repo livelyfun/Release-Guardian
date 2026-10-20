@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from sqlalchemy.orm import Session
 
 from app.models.base import utcnow
@@ -56,3 +58,30 @@ def summarize(db: Session, monitor: Monitor, run: Run, duration_ms: int) -> dict
         run.summary = {}
     run.summary["regression"] = result
     return result
+
+
+def suppression_state(monitor: Monitor, now: datetime | None = None) -> dict | None:
+    """Return the configured regression suppression, including expired ones."""
+    config = monitor.config or {}
+    raw = config.get("regression_suppressed_until")
+    if not raw:
+        return None
+    try:
+        until = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if until.tzinfo is None:
+        until = until.replace(tzinfo=UTC)
+    current = now or datetime.now(UTC)
+    return {
+        "until": until.isoformat(),
+        "reason": config.get("regression_suppression_reason") or "",
+        "active": until > current,
+    }
+
+
+def active_suppression(monitor: Monitor, now: datetime | None = None) -> dict | None:
+    state = suppression_state(monitor, now)
+    if state is not None and state["active"]:
+        return state
+    return None

@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, Query, status
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.v1.access import (
@@ -10,8 +12,15 @@ from app.api.v1.access import (
 from app.api.v1.deps import Principal, get_principal, require_role
 from app.core.database import get_db
 from app.models.project import Environment, Monitor, Project
-from app.schemas.project import MonitorCreate, MonitorOut, MonitorUpdate
+from app.schemas.project import (
+    MonitorCreate,
+    MonitorOut,
+    MonitorUpdate,
+    RegressionSuppressionIn,
+    RegressionSuppressionOut,
+)
 from app.services import audit
+from app.services.regression import suppression_state
 
 router = APIRouter(tags=["monitors"])
 
@@ -121,3 +130,100 @@ def update_monitor(
     db.commit()
     db.refresh(monitor)
     return MonitorOut.model_validate(monitor)
+
+
+def _suppression_out(monitor: Monitor) -> RegressionSuppressionOut:
+    state = suppression_state(monitor)
+    if state is None:
+        return RegressionSuppressionOut(
+            monitor_id=monitor.id, active=False, until=None, reason=""
+        )
+    return RegressionSuppressionOut(
+        monitor_id=monitor.id,
+        active=state["active"],
+        until=state["until"],
+        reason=state["reason"],
+    )
+
+
+@router.get(
+    "/monitors/{monitor_id}/regression-suppression",
+    response_model=RegressionSuppressionOut,
+)
+def get_regression_suppression(
+    monitor_id: str,
+    user: Principal = Depends(get_principal),
+    db: Session = Depends(get_db),
+) -> RegressionSuppressionOut:
+    monitor = get_monitor(db, monitor_id)
+    authorize_monitor(db, monitor, user)
+    return _suppression_out(monitor)
+
+
+@router.post(
+    "/monitors/{monitor_id}/regression-suppression",
+    response_model=RegressionSuppressionOut,
+)
+def set_regression_suppression(
+    monitor_id: str,
+    payload: RegressionSuppressionIn,
+    user: Principal = Depends(get_principal),
+    db: Session = Depends(get_db),
+) -> RegressionSuppressionOut:
+    monitor = get_monitor(db, monitor_id)
+    workspace_id = authorize_monitor(db, monitor, user, "admin")
+
+    until = payload.until
+    if until.tzinfo is None:
+        until = until.replace(tzinfo=UTC)
+    if until <= datetime.now(UTC):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Suppression expiry must be in the future",
+        )
+
+    config = dict(monitor.config or {})
+    config["regression_suppressed_until"] = until.isoformat()
+    config["regression_suppression_reason"] = payload.reason
+    monitor.config = config
+    audit.record(
+        db,
+        action="monitor.regression_suppressed",
+        target_type="monitor",
+        workspace_id=workspace_id,
+        user_id=user.id,
+        target_id=monitor.id,
+        meta={"until": until.isoformat(), "reason": payload.reason},
+    )
+    db.commit()
+    db.refresh(monitor)
+    return _suppression_out(monitor)
+
+
+@router.delete(
+    "/monitors/{monitor_id}/regression-suppression",
+    response_model=RegressionSuppressionOut,
+)
+def clear_regression_suppression(
+    monitor_id: str,
+    user: Principal = Depends(get_principal),
+    db: Session = Depends(get_db),
+) -> RegressionSuppressionOut:
+    monitor = get_monitor(db, monitor_id)
+    workspace_id = authorize_monitor(db, monitor, user, "admin")
+
+    config = dict(monitor.config or {})
+    config.pop("regression_suppressed_until", None)
+    config.pop("regression_suppression_reason", None)
+    monitor.config = config
+    audit.record(
+        db,
+        action="monitor.regression_suppression_cleared",
+        target_type="monitor",
+        workspace_id=workspace_id,
+        user_id=user.id,
+        target_id=monitor.id,
+    )
+    db.commit()
+    db.refresh(monitor)
+    return _suppression_out(monitor)

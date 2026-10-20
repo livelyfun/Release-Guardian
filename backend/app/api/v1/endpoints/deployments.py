@@ -6,9 +6,17 @@ from app.api.v1.deps import Principal, get_principal, require_role
 from app.core.database import get_db
 from app.models.project import Environment, Project
 from app.models.release import Deployment
-from app.schemas.release import DeploymentCreate, DeploymentOut
+from app.schemas.release import (
+    DeploymentComparisonOut,
+    DeploymentCreate,
+    DeploymentOut,
+)
 from app.services import audit
-from app.services.runs import enqueue_runs_for_environment, refresh_deployment_status
+from app.services.runs import (
+    build_deployment_comparison,
+    enqueue_runs_for_environment,
+    refresh_deployment_status,
+)
 
 router = APIRouter(tags=["deployments"])
 
@@ -97,3 +105,21 @@ def get_deployment_detail(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deployment not found")
     authorize_environment(db, get_environment(db, deployment.environment_id), user)
     return DeploymentOut.model_validate(deployment)
+
+
+@router.get(
+    "/deployments/{deployment_id}/comparison",
+    response_model=DeploymentComparisonOut,
+)
+def get_deployment_comparison(
+    deployment_id: str,
+    user: Principal = Depends(get_principal),
+    db: Session = Depends(get_db),
+) -> DeploymentComparisonOut:
+    deployment = db.get(Deployment, deployment_id)
+    if deployment is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deployment not found")
+    authorize_environment(db, get_environment(db, deployment.environment_id), user)
+    return DeploymentComparisonOut.model_validate(
+        build_deployment_comparison(db, deployment)
+    )

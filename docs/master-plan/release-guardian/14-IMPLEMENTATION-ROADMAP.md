@@ -16,7 +16,7 @@ Each phase lists its exit criteria; a phase is complete only when the criteria a
 | C — Identity and workspace model | Auth, workspaces, memberships, projects, environments, audit | Complete |
 | D — Durable execution platform | Jobs, queue, scheduler, retries, execution tracking | Complete (retries via sweeper; no quarantined DLQ) |
 | E — Monitoring and audit engine | HTTP checks, browser/Lighthouse execution, evidence | Partial (HTTP, Playwright, Lighthouse, screenshots/traces/HAR; artifact redaction pending) |
-| F — Release verification | Deployment events, triggered suites, baselines, regression | Partial (events, triggered runs, baselines; CI status checks/suppressions pending) |
+| F — Release verification | Deployment events, triggered suites, baselines, regression | Partial (events, triggered runs, baselines, comparison, suppressions; outbound CI status checks pending) |
 | G — Incident management | Alert rules, lifecycle, notifications, escalation | Partial (lifecycle, retries, escalation, maintenance windows; real email transport pending) |
 | H — Complete product experience | Dashboards, test builder, reports, API/CLI | Partial (dashboard incl. usage/artifacts/admin UI, REST API, API keys; test builder/exports/team UI/CLI pending) |
 | I — Advanced capabilities | AI assistance, analytics, billing, regions | Structural only (`AIConfiguration`; features not built) |
@@ -53,9 +53,9 @@ Each phase lists its exit criteria; a phase is complete only when the criteria a
 
 ### M5 — Release verification (partial)
 - Deployment ingestion, deployment-triggered runs, latency baseline and
-  regression detection, deployment status derivation.
-- Remaining: previous-known-good comparison, CI status checks, regression
-  suppressions.
+  regression detection, deployment status derivation, previous-known-good
+  comparison (API + UI), and time-boxed regression suppressions.
+- Remaining: outbound CI status checks (for example GitHub commit statuses).
 - Exit criteria: a deployment can be marked passed/failed/inconclusive from
   suite results. Met.
 

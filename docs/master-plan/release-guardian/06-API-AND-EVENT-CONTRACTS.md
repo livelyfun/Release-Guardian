@@ -24,6 +24,8 @@
 | `/test-definitions` | GET/POST | workspace member | versioned (POST increments version) |
 | `/test-definitions/{id}/versions` | GET | workspace member | |
 | `/deployments` | GET/POST | workspace member | ingestion via webhook or manual |
+| `/deployments/{id}/comparison` | GET | workspace member | compares checks with the previous passing deployment |
+| `/monitors/{id}/regression-suppression` | GET/POST/DELETE | admin for writes | time-boxed suppression of performance-regression incidents |
 | `/audit-runs` | POST/GET/GET/{id} | workspace member | group executions |
 | `/test-runs` | GET/GET/{id} | workspace member | includes job_executions |
 | `/job-executions` | GET/GET/{id} | workspace member | status, attempts, result_summary |

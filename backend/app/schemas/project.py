@@ -88,3 +88,15 @@ class MonitorOut(ORMModel):
     config: dict
     last_checked_at: datetime | None
     created_at: datetime
+
+
+class RegressionSuppressionIn(BaseModel):
+    until: datetime
+    reason: str = Field(default="", max_length=300)
+
+
+class RegressionSuppressionOut(BaseModel):
+    monitor_id: str
+    active: bool
+    until: datetime | None
+    reason: str

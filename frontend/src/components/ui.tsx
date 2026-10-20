@@ -27,7 +27,10 @@ export function PageHeader({
 const toneMap: Record<string, string> = {
   passed: "bg-emerald-50 text-emerald-700 ring-emerald-200",
   resolved: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+  improved: "bg-emerald-50 text-emerald-700 ring-emerald-200",
   failed: "bg-red-50 text-red-700 ring-red-200",
+  regressed: "bg-red-50 text-red-700 ring-red-200",
+  new: "bg-blue-50 text-blue-700 ring-blue-200",
   critical: "bg-red-50 text-red-700 ring-red-200",
   high: "bg-orange-50 text-orange-700 ring-orange-200",
   open: "bg-red-50 text-red-700 ring-red-200",

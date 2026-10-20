@@ -17,6 +17,7 @@ from app.services.incidents import (
 from app.services.locks import acquire_run_lock, release_run_lock
 from app.services.maintenance import active_maintenance_window, window_summary
 from app.services.notifications import dispatch as notification_dispatch
+from app.services.regression import active_suppression
 from app.services.regression import summarize as summarize_regression
 from app.services.runs import refresh_deployment_status
 
@@ -195,7 +196,14 @@ def execute_run(run_id: str) -> dict:
                 resolved_incidents += resolve_open_incidents(db, f"monitor:{monitor.id}:failure")
 
                 regression = summarize_regression(db, monitor, run, outcome.duration_ms)
-                if regression.get("regression") and window is not None:
+                suppression = active_suppression(monitor)
+                if regression.get("regression") and suppression is not None:
+                    run.summary["regression_incident_suppressed"] = {
+                        "reason": "regression_suppression",
+                        "suppression_reason": suppression["reason"],
+                        "until": suppression["until"],
+                    }
+                elif regression.get("regression") and window is not None:
                     run.summary["regression_incident_suppressed"] = "maintenance_window"
                 elif regression.get("regression"):
                     incident, created = open_regression_incident(
