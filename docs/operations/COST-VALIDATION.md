@@ -117,7 +117,7 @@ does not block checks.
 | Scheduled checks skip when a run is active | `workers/tasks/scheduler.py` |
 | Deployment fan-out skips active monitors | `services/runs.py` |
 | Artifact capture opt-out per monitor | `config.capture_screenshot=false` |
-| Artifact retention config | **Not automated yet** — bucket lifecycle rule required |
+| Artifact retention | `ARTIFACT_RETENTION_DAYS` + hourly `prune_artifacts` task; bucket lifecycle remains the backstop |
 | AI spending limit | `AIConfiguration` model (enforcement pending) |
 
 ## Validation checklist
