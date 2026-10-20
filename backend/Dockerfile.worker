@@ -13,6 +13,14 @@ COPY alembic.ini ./
 COPY alembic ./alembic
 COPY app ./app
 
+# Lighthouse audits drive the Chromium build that ships with this image.
+# The install must never block browser checks, so a failure degrades to a
+# warning and Lighthouse monitors report an error instead of crashing.
+RUN npm install -g lighthouse@12.8.2 \
+    && ln -sf "$(ls -d /ms-playwright/chromium-*/chrome-linux/chrome | head -n 1)" /usr/local/bin/chrome \
+    || echo "WARNING: Lighthouse CLI is unavailable in this image"
+ENV CHROME_PATH=/usr/local/bin/chrome
+
 # Execute untrusted browsing as an unprivileged user.
 RUN useradd --create-home --uid 10001 guardian
 USER guardian

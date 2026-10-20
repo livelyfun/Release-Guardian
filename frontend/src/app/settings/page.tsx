@@ -9,12 +9,16 @@ import type {
   ChannelKind,
   EscalationRule,
   MaintenanceWindow,
+  Member,
   NotificationAttempt,
   NotificationChannel,
+  Role,
   Severity,
   User,
   Workspace,
 } from "@/lib/types";
+
+const ROLES: Role[] = ["owner", "admin", "developer", "viewer"];
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -56,6 +60,14 @@ export default function SettingsPage() {
   const [windowEnd, setWindowEnd] = useState("");
   const [windowError, setWindowError] = useState<string | null>(null);
   const [windowBusy, setWindowBusy] = useState(false);
+
+  const members = useApi<Member[]>(
+    activeWorkspace ? `/workspaces/${activeWorkspace}/members` : null,
+  );
+  const [memberEmail, setMemberEmail] = useState("");
+  const [memberRole, setMemberRole] = useState<Role>("viewer");
+  const [memberError, setMemberError] = useState<string | null>(null);
+  const [memberBusy, setMemberBusy] = useState(false);
 
   useEffect(() => {
     setActiveId(window.localStorage.getItem("rg_workspace_id"));
@@ -135,6 +147,57 @@ export default function SettingsPage() {
       channels.reload();
     } catch (err) {
       setChannelError(err instanceof ApiError ? err.message : "Failed to delete channel");
+    }
+  }
+
+  async function inviteMember(event: React.FormEvent) {
+    event.preventDefault();
+    if (!activeWorkspace) return;
+    setMemberBusy(true);
+    setMemberError(null);
+    try {
+      await apiClient.post(`/workspaces/${activeWorkspace}/members`, {
+        email: memberEmail,
+        role: memberRole,
+      });
+      setMemberEmail("");
+      setMemberRole("viewer");
+      members.reload();
+    } catch (err) {
+      setMemberError(err instanceof ApiError ? err.message : "Failed to add member");
+    } finally {
+      setMemberBusy(false);
+    }
+  }
+
+  async function changeMemberRole(member: Member, role: Role) {
+    setMemberBusy(true);
+    setMemberError(null);
+    try {
+      await apiClient.patch(`/workspaces/${member.workspace_id}/members/${member.id}`, {
+        role,
+      });
+      members.reload();
+    } catch (err) {
+      setMemberError(err instanceof ApiError ? err.message : "Failed to update member");
+    } finally {
+      setMemberBusy(false);
+    }
+  }
+
+  async function removeMember(member: Member) {
+    if (!window.confirm(`Remove ${member.email ?? member.user_id} from this workspace?`)) {
+      return;
+    }
+    setMemberBusy(true);
+    setMemberError(null);
+    try {
+      await apiClient.del(`/workspaces/${member.workspace_id}/members/${member.id}`);
+      members.reload();
+    } catch (err) {
+      setMemberError(err instanceof ApiError ? err.message : "Failed to remove member");
+    } finally {
+      setMemberBusy(false);
     }
   }
 
@@ -287,6 +350,121 @@ export default function SettingsPage() {
           </form>
         </Card>
       </div>
+
+      <Card className="mt-6 p-6">
+        <h2 className="mb-1 text-sm font-semibold">Team</h2>
+        <p className="mb-4 text-sm text-slate-500">
+          Members and roles for the active workspace. Owners manage owners; admins
+          manage other roles.
+        </p>
+
+        {!activeWorkspace ? (
+          <p className="text-sm text-slate-500">Select a workspace to manage members.</p>
+        ) : members.loading ? (
+          <Spinner />
+        ) : members.error ? (
+          <ErrorNotice message={members.error} />
+        ) : (
+          <>
+            {members.data && members.data.length > 0 ? (
+              <ul className="space-y-2">
+                {members.data.map((member) => (
+                  <li
+                    key={member.id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  >
+                    <div>
+                      <p className="font-medium">
+                        {member.name ?? member.user_id}
+                        {me.data?.id === member.user_id ? (
+                          <span className="ml-2 text-xs font-normal text-slate-500">(you)</span>
+                        ) : null}
+                      </p>
+                      <p className="break-all text-xs text-slate-500">
+                        {member.email ?? member.user_id}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <select
+                        aria-label={`Role for ${member.email ?? member.user_id}`}
+                        className="input w-auto py-1 text-xs"
+                        value={member.role}
+                        disabled={memberBusy}
+                        onChange={(event) =>
+                          changeMemberRole(member, event.target.value as Role)
+                        }
+                      >
+                        {ROLES.map((role) => (
+                          <option key={role} value={role}>
+                            {role}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        className="text-xs text-red-600 hover:underline"
+                        disabled={memberBusy}
+                        onClick={() => removeMember(member)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-slate-500">No members found.</p>
+            )}
+
+            {memberError ? (
+              <div className="mt-4">
+                <ErrorNotice message={memberError} />
+              </div>
+            ) : null}
+
+            <form
+              onSubmit={inviteMember}
+              className="mt-5 space-y-3 border-t border-slate-100 pt-5"
+            >
+              <div className="grid gap-3 sm:grid-cols-[1fr_140px]">
+                <div>
+                  <label className="label" htmlFor="member-email">
+                    Add member by email
+                  </label>
+                  <input
+                    id="member-email"
+                    className="input"
+                    type="email"
+                    value={memberEmail}
+                    onChange={(event) => setMemberEmail(event.target.value)}
+                    placeholder="teammate@example.com"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="label" htmlFor="member-role">
+                    Role
+                  </label>
+                  <select
+                    id="member-role"
+                    className="input"
+                    value={memberRole}
+                    onChange={(event) => setMemberRole(event.target.value as Role)}
+                  >
+                    {ROLES.map((role) => (
+                      <option key={role} value={role}>
+                        {role}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <button className="btn-primary" disabled={memberBusy}>
+                {memberBusy ? "Saving…" : "Add member"}
+              </button>
+            </form>
+          </>
+        )}
+      </Card>
 
       <Card className="mt-6 p-6">
         <h2 className="mb-1 text-sm font-semibold">Notification channels</h2>

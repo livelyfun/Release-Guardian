@@ -17,6 +17,16 @@ export interface Workspace {
   created_at: string;
 }
 
+export interface Member {
+  id: string;
+  workspace_id: string;
+  user_id: string;
+  role: Role;
+  email: string | null;
+  name: string | null;
+  created_at: string;
+}
+
 export interface Project {
   id: string;
   workspace_id: string;

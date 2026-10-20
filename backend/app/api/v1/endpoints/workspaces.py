@@ -8,6 +8,7 @@ from app.schemas.identity import (
     AuditLogOut,
     MemberCreate,
     MemberOut,
+    MemberUpdate,
     WorkspaceCreate,
     WorkspaceOut,
 )
@@ -15,6 +16,27 @@ from app.services import audit
 from app.services.slug import slugify, unique_slug
 
 router = APIRouter(tags=["workspaces"])
+
+
+def _member_out(member: Membership) -> MemberOut:
+    return MemberOut(
+        id=member.id,
+        workspace_id=member.workspace_id,
+        user_id=member.user_id,
+        role=member.role,
+        email=member.user.email if member.user is not None else None,
+        name=member.user.name if member.user is not None else None,
+        created_at=member.created_at,
+    )
+
+
+def _owner_count(db: Session, workspace_id: str, exclude_id: str | None = None) -> int:
+    query = db.query(Membership).filter(
+        Membership.workspace_id == workspace_id, Membership.role == "owner"
+    )
+    if exclude_id:
+        query = query.filter(Membership.id != exclude_id)
+    return query.count()
 
 
 @router.get("/workspaces", response_model=list[WorkspaceOut])
@@ -76,7 +98,7 @@ def list_members(
         .order_by(Membership.created_at)
         .all()
     )
-    return [MemberOut.model_validate(member) for member in members]
+    return [_member_out(member) for member in members]
 
 
 @router.post(
@@ -115,7 +137,101 @@ def add_member(
     )
     db.commit()
     db.refresh(membership)
-    return MemberOut.model_validate(membership)
+    return _member_out(membership)
+
+
+@router.patch(
+    "/workspaces/{workspace_id}/members/{membership_id}",
+    response_model=MemberOut,
+)
+def update_member_role(
+    workspace_id: str,
+    membership_id: str,
+    payload: MemberUpdate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> MemberOut:
+    actor = require_role(db, workspace_id, user, "admin")
+    target = (
+        db.query(Membership)
+        .filter(Membership.id == membership_id, Membership.workspace_id == workspace_id)
+        .one_or_none()
+    )
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+
+    if (target.role == "owner" or payload.role == "owner") and actor.role != "owner":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an owner can grant or change the owner role",
+        )
+    if (
+        target.role == "owner"
+        and payload.role != "owner"
+        and _owner_count(db, workspace_id, exclude_id=target.id) == 0
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A workspace must keep at least one owner",
+        )
+
+    previous_role = target.role
+    target.role = payload.role
+    audit.record(
+        db,
+        action="member.role_update",
+        target_type="user",
+        workspace_id=workspace_id,
+        user_id=user.id,
+        target_id=target.user_id,
+        meta={"from": previous_role, "to": payload.role},
+    )
+    db.commit()
+    db.refresh(target)
+    return _member_out(target)
+
+
+@router.delete(
+    "/workspaces/{workspace_id}/members/{membership_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def remove_member(
+    workspace_id: str,
+    membership_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    actor = require_role(db, workspace_id, user, "admin")
+    target = (
+        db.query(Membership)
+        .filter(Membership.id == membership_id, Membership.workspace_id == workspace_id)
+        .one_or_none()
+    )
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+
+    if target.role == "owner" and actor.role != "owner":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an owner can remove an owner",
+        )
+    if target.role == "owner" and _owner_count(db, workspace_id, exclude_id=target.id) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A workspace must keep at least one owner",
+        )
+
+    audit.record(
+        db,
+        action="member.remove",
+        target_type="user",
+        workspace_id=workspace_id,
+        user_id=user.id,
+        target_id=target.user_id,
+        meta={"role": target.role},
+    )
+    db.delete(target)
+    db.commit()
 
 
 @router.get("/workspaces/{workspace_id}/audit-logs", response_model=list[AuditLogOut])

@@ -25,11 +25,17 @@ class MemberCreate(BaseModel):
     role: Role = "viewer"
 
 
+class MemberUpdate(BaseModel):
+    role: Role
+
+
 class MemberOut(ORMModel):
     id: str
     workspace_id: str
     user_id: str
     role: Role
+    email: str | None = None
+    name: str | None = None
     created_at: datetime
 
 

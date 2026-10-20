@@ -143,3 +143,63 @@ def test_member_invite_requires_known_user(client):
         json={"email": "nobody@example.com", "role": "viewer"},
     )
     assert response.status_code == 404
+
+
+def test_team_member_role_updates_and_removal(client):
+    owner_headers = auth_headers(register(client)["access_token"])
+    workspace = client.get("/api/v1/workspaces", headers=owner_headers).json()[0]
+    members_url = f"/api/v1/workspaces/{workspace['id']}/members"
+
+    register(client, email="developer@example.com")
+    added = client.post(
+        members_url,
+        headers=owner_headers,
+        json={"email": "developer@example.com", "role": "viewer"},
+    )
+    assert added.status_code == 201, added.text
+    assert added.json()["email"] == "developer@example.com"
+    assert added.json()["name"] == "Owner"
+    membership_id = added.json()["id"]
+
+    promoted = client.patch(
+        f"{members_url}/{membership_id}",
+        headers=owner_headers,
+        json={"role": "developer"},
+    )
+    assert promoted.status_code == 200
+    assert promoted.json()["role"] == "developer"
+
+    members = client.get(members_url, headers=owner_headers).json()
+    owner_membership = next(member for member in members if member["role"] == "owner")
+    last_owner = client.patch(
+        f"{members_url}/{owner_membership['id']}",
+        headers=owner_headers,
+        json={"role": "admin"},
+    )
+    assert last_owner.status_code == 409
+
+    # A non-owner admin cannot touch owner membership.
+    admin_headers = auth_headers(register(client, email="admin@example.com")["access_token"])
+    client.post(
+        members_url,
+        headers=owner_headers,
+        json={"email": "admin@example.com", "role": "admin"},
+    )
+    grant_owner = client.patch(
+        f"{members_url}/{membership_id}",
+        headers=admin_headers,
+        json={"role": "owner"},
+    )
+    assert grant_owner.status_code == 403
+    remove_owner = client.delete(
+        f"{members_url}/{owner_membership['id']}", headers=admin_headers
+    )
+    assert remove_owner.status_code == 403
+
+    removed = client.delete(f"{members_url}/{membership_id}", headers=owner_headers)
+    assert removed.status_code == 204
+    remaining = client.get(members_url, headers=owner_headers).json()
+    assert [member["email"] for member in remaining] == [
+        "owner@example.com",
+        "admin@example.com",
+    ]
