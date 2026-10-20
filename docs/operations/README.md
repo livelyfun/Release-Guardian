@@ -13,6 +13,7 @@ reproducible command, and every SLO has a measurement query.
 | [SECURITY-REVIEW.md](SECURITY-REVIEW.md) | Threat-to-control evidence, residual risks, sign-off checklist |
 | [COST-VALIDATION.md](COST-VALIDATION.md) | Cost drivers, model inputs, validation checklist |
 | [PRODUCTION-CHECKLIST.md](PRODUCTION-CHECKLIST.md) | Go-live gate for M8 |
+| [PRODUCTION-DEPLOYMENT.md](PRODUCTION-DEPLOYMENT.md) | Vercel + Render topology, service definitions, env matrix, migration strategy, blockers |
 
 ## Status
 
