@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-20T06:14:59.904473+00:00",
+  "generated_at": "2026-10-20T08:30:48.094188+00:00",
   "base_url": "http://127.0.0.1:8010",
   "scenario": "all",
   "requests_per_scenario": 40,
@@ -13,29 +13,29 @@
     "worker_mode": "inline"
   },
   "api_available": true,
-  "setup_seconds": 0.85,
+  "setup_seconds": 0.76,
   "read_scenario": {
     "requests": 40,
-    "duration_seconds": 0.493,
-    "throughput_rps": 81.11,
+    "duration_seconds": 0.346,
+    "throughput_rps": 115.76,
     "latency_ms": {
-      "p50": 74.14,
-      "p95": 160.67,
-      "p99": 184.75,
-      "max": 184.75,
-      "mean": 93.39
+      "p50": 62.5,
+      "p95": 90.43,
+      "p99": 105.67,
+      "max": 105.67,
+      "mean": 64.69
     }
   },
   "runs_scenario": {
     "requests": 40,
-    "duration_seconds": 1.957,
-    "throughput_rps": 20.44,
+    "duration_seconds": 1.784,
+    "throughput_rps": 22.42,
     "latency_ms": {
-      "p50": 286.9,
-      "p95": 686.71,
-      "p99": 1477.3,
-      "max": 1477.3,
-      "mean": 367.27
+      "p50": 272.71,
+      "p95": 577.14,
+      "p99": 917.75,
+      "max": 917.75,
+      "mean": 343.96
     }
   },
   "totals": {
@@ -49,11 +49,11 @@
     },
     "error_rate": 0.0,
     "latency_ms": {
-      "p50": 160.67,
-      "p95": 606.69,
-      "p99": 713.32,
-      "max": 1477.3,
-      "mean": 230.33
+      "p50": 105.67,
+      "p95": 562.97,
+      "p99": 695.73,
+      "max": 917.75,
+      "mean": 204.33
     }
   },
   "errors": []

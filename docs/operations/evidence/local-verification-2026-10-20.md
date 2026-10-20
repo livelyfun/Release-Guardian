@@ -1,6 +1,6 @@
 # Local Verification — 2026-10-20
 
-**Revision:** `5ab0787` (backend, worker, frontend, migrations)
+**Revision:** `33ff680` (backend, worker, frontend, migrations)
 **Environment:** Developer workstation, Python 3.12, Node 20+, SQLite,
 `WORKER_MODE=inline`. Docker daemon was unavailable, so no Postgres/Redis
 containers were started.
@@ -14,7 +14,7 @@ evidence and does not satisfy the M8 sign-off gates in
 | Command | Result |
 |---|---|
 | `backend/.venv/bin/ruff check app tests` | Pass |
-| `backend/.venv/bin/pytest -q` | **85 passed**, 1 deprecation warning |
+| `backend/.venv/bin/pytest -q` | **98 passed**, 1 deprecation warning |
 | `backend/.venv/bin/ruff check scripts --config backend/pyproject.toml` | Pass |
 | `bash -n scripts/backup_restore_drill.sh` | Pass |
 | `cd frontend && npm run lint` | Pass, no warnings |
@@ -29,7 +29,7 @@ Secret scan (`backend/.venv/bin/python -m app.services.secret_scanner`):
 ```json
 {
   "environment_variables_scanned": 86,
-  "configuration_values_scanned": 36,
+  "configuration_values_scanned": 57,
   "findings_count": 0,
   "is_secure": true
 }
@@ -98,11 +98,24 @@ nosniff`, `x-frame-options: DENY`, and `referrer-policy: no-referrer`.
 
 ## Load baseline
 
-Tooling validation only: 40 reads at 81.1 rps (p95 160.7 ms) and 40 runs at
-20.4 rps (p95 686.7 ms, p99 1477.3 ms, 40/40 passing) on a single API process.
+Tooling validation only, re-run on the current revision: 40 reads at 115.8 rps
+(p95 90.4 ms) and 40 runs at 22.4 rps (p95 577.1 ms, p99 917.8 ms, 40/40
+passing), 0% errors across 80 requests on a single inline API process.
 Raw report: [`loadtest-local-2026-10-20.json`](loadtest-local-2026-10-20.json).
 See [`../LOAD-AND-RESILIENCE.md`](../LOAD-AND-RESILIENCE.md) for the staging
 gates.
+
+## Feature coverage added since the previous report
+
+- Workspace team management (invite, role changes, removal, last-owner
+  safeguards) with API and settings UI.
+- Browser journey step builder (create/edit), trace/HAR/per-step screenshot
+  options, Lighthouse form-factor/report controls.
+- CSV exports for runs and incidents, plus `scripts/rg.py` CLI smoke-checked
+  with `--help`/ruff.
+- Deployment comparison, regression suppressions, SMTP email transport, and
+  GitHub commit statuses (mocked tests; no live provider calls).
+- HAR credential redaction and URL query redaction.
 
 ## Not covered locally
 
