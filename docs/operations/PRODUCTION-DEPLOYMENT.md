@@ -8,6 +8,19 @@ step names the exact failure it prevents.
 backend stack is blocked on account-level actions that require a browser
 session (see [Blockers](#blockers)). No secret values appear in this document.
 
+Decisions taken on 2026-10-20:
+
+- **Compute spend deferred.** Render background workers require a payment
+  method. The API, Celery worker, browser worker, and scheduler are deliberately
+  **not provisioned**; this document is the ready-to-run specification for when
+  budget is approved.
+- **Artifacts disabled.** Cloudflare R2 is not enabled on the account, so
+  `S3_BUCKET` stays empty. Runs still execute and record upload failures as
+  evidence; artifact links are empty.
+- **Git access in progress.** The Render GitHub App is being installed for the
+  private repository so the service definitions below can be created without
+  further changes.
+
 ## Deployed topology
 
 ```
@@ -197,8 +210,9 @@ Free Render compute covers web services, PostgreSQL, Key Value, and static
 sites only. `background_worker` and `cron_job` are paid. The Celery worker,
 browser worker, and scheduler cannot be created on the free plan.
 
-Fix: add a payment method, then create the three background workers on the
-plans listed above.
+**Spend is intentionally deferred**, so these three services are not created.
+When budget is approved, add a payment method and create them on the plans
+listed above — no other change is needed.
 
 ### 3. Cloudflare R2 is not enabled
 
