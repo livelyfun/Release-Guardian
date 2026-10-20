@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import app.api.v1.endpoints.artifacts as artifacts_endpoint
 import app.api.v1.endpoints.runs as runs_endpoint
 import app.services.checks as checks_module
 import app.services.incidents as incidents_module
@@ -15,7 +16,7 @@ from app.core.production import production_config_issues
 from app.core.rate_limit import _use_redis
 from app.core.security import sign_webhook, verify_webhook_signature
 from app.models.base import utcnow
-from app.models.execution import Run
+from app.models.execution import Artifact, Run
 from app.models.project import Environment
 from app.models.release import Incident, IncidentEvent
 from app.services import locks, storage
@@ -73,6 +74,60 @@ def test_metrics_token_protects_endpoint(client, monkeypatch):
     authorized = client.get("/metrics", headers={"Authorization": "Bearer scrape-token"})
     assert authorized.status_code == 200
     assert "rg_api_requests_total" in authorized.text
+
+
+def test_artifact_signed_url_requires_workspace_ownership(client, monkeypatch):
+    headers, workspace, monitor = _setup_monitor(client)
+    created = client.post(f"/api/v1/monitors/{monitor['id']}/runs", headers=headers, json={})
+    assert created.status_code == 201
+    run_id = created.json()["id"]
+    storage_key = f"artifacts/{run_id}/screenshot-abc123"
+
+    db = SessionLocal()
+    try:
+        db.add(
+            Artifact(
+                run_id=run_id,
+                kind="screenshot",
+                storage_key=storage_key,
+                url="https://example.com/expired",
+                size_bytes=10,
+                mime_type="image/png",
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    monkeypatch.setattr(
+        artifacts_endpoint, "get_signed_url", lambda key: f"https://signed.example/{key}"
+    )
+
+    same_workspace = client.get(
+        f"/api/v1/workspaces/{workspace['id']}/artifacts/signed-url",
+        headers=headers,
+        params={"artifact_key": storage_key},
+    )
+    assert same_workspace.status_code == 200
+    assert same_workspace.json()["expires_in_seconds"] == settings.artifact_url_ttl_seconds
+
+    other = register(client, email="other@example.com")
+    other_headers = auth_headers(other["access_token"])
+    other_workspace = client.get("/api/v1/workspaces", headers=other_headers).json()[0]
+
+    cross_tenant = client.get(
+        f"/api/v1/workspaces/{other_workspace['id']}/artifacts/signed-url",
+        headers=other_headers,
+        params={"artifact_key": storage_key},
+    )
+    assert cross_tenant.status_code == 404
+
+    missing = client.get(
+        f"/api/v1/workspaces/{workspace['id']}/artifacts/signed-url",
+        headers=headers,
+        params={"artifact_key": "artifacts/nope/none"},
+    )
+    assert missing.status_code == 404
 
 
 def test_storage_outage_raises_controlled_error(monkeypatch):
