@@ -3,6 +3,7 @@ name = "release-guardian-backend"
 version = "0.1.0"
 description = "Release Guardian control plane and workers"
 requires-python = ">=3.11"
+license = { text = "AGPL-3.0-or-later" }
 
 [tool.ruff]
 line-length = 100

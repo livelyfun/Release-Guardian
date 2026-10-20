@@ -1,270 +1,191 @@
 # Production deployment
 
-Deployment of Release Guardian to Vercel (frontend) and Render (API, Celery
-workers, PostgreSQL, Key Value). Written to be executed top to bottom; each
-step names the exact failure it prevents.
+How to run Release Guardian outside a developer laptop. Two supported paths:
 
-**Status as of 2026-10-20: partially deployed.** The frontend is live; the
-backend stack is blocked on account-level actions that require a browser
-session (see [Blockers](#blockers)). No secret values appear in this document.
+1. **Single host with Docker Compose** — recommended for self-hosting.
+2. **Managed platform** — separate web service, background workers, PostgreSQL,
+   and Redis (any provider that can build a Dockerfile and run long-lived
+   processes).
 
-Decisions taken on 2026-10-20:
+This repository does **not** ship a hosted instance. Every hostname below is a
+placeholder; substitute your own.
 
-- **Compute spend deferred.** Render background workers require a payment
-  method. The API, Celery worker, browser worker, and scheduler are deliberately
-  **not provisioned**; this document is the ready-to-run specification for when
-  budget is approved.
-- **Artifacts disabled.** Cloudflare R2 is not enabled on the account, so
-  `S3_BUCKET` stays empty. Runs still execute and record upload failures as
-  evidence; artifact links are empty.
-- **Git access in progress.** The Render GitHub App is being installed for the
-  private repository so the service definitions below can be created without
-  further changes.
-
-## Deployed topology
+## Topology
 
 ```
 Browser
   │
-  ├─ https://release-guardian.vercel.app        Vercel, Next.js (App Router)
+  ├─ https://app.example.com          Next.js dashboard (static/SSR)
   │      NEXT_PUBLIC_API_URL baked at build time
   │
-  └─ https://release-guardian-api.onrender.com  Render web service (NOT YET CREATED)
+  └─ https://api.example.com          FastAPI control plane
          │
-         ├─ PostgreSQL 16   dpg-dbbi0aff3r2c738vbb10-a  (created, available)
-         ├─ Key Value        red-dbbi0ajbc2fs73b98v80  (created, available)
-         ├─ celery worker    queue `release_guardian`  (not created)
-         ├─ browser worker   queues `browser`, `lighthouse`  (not created)
-         └─ celery beat      drifts monitor schedules  (not created)
+         ├─ PostgreSQL 16+            durable state
+         ├─ Redis                     broker, rate limits, scheduler lock
+         ├─ worker                    queue `release_guardian`
+         ├─ browser worker            queues `browser`, `lighthouse`
+         └─ scheduler                 `celery beat`
 ```
 
-All Render resources are in region `oregon`, matching PostgreSQL 16 from
-`docker-compose.yml`.
+The dashboard and the API are separate origins. Set `CORS_ORIGINS` on the API
+to the dashboard origin exactly; do not use a wildcard.
 
-## What is live
+## Path 1 — Docker Compose (single host)
 
-| Component | Identifier | State |
-|---|---|---|
-| Vercel project | `prj_jKowhpNNRVNz9wufgXr600vs63sl` | configured, Git-connected |
-| Production domain | `https://release-guardian.vercel.app` | **live, HTTP 200** |
-| Production build | commit `114e695` (`main`) | READY, promoted |
-| Render PostgreSQL | `dpg-dbbi0aff3r2c738vbb10-a` | available, free, expires 2026-11-19 |
-| Render Key Value | `red-dbbi0ajbc2fs73b98v80` | available, free, in-memory only |
-| Render compute services | — | **none created** |
-| Cloudflare R2 bucket | — | **not enabled on account** |
+`docker-compose.yml` defines `postgres`, `redis`, `api`, `worker`,
+`browser-worker`, and `scheduler`. It is the reference deployment.
 
-### Vercel settings
+```bash
+cp .env.example .env          # then edit every value
+# Set at minimum: JWT_SECRET, WEBHOOK_SIGNING_SECRET, CORS_ORIGINS,
+# ENVIRONMENT=production, and the database/Redis credentials.
+docker compose up -d --build
+```
 
-| Setting | Value |
-|---|---|
-| Root directory | `frontend` |
-| Framework | Next.js |
-| Node.js | `24.x` (the account rejects `20.x` as discontinued) |
-| Install command | `npm ci` |
-| Build command | `npm run build` |
-| Output directory | `.next` |
+The `api` service runs `alembic upgrade head` before starting Uvicorn, so the
+schema is current on first boot and after every upgrade. The other services
+must never run migrations.
 
-`NEXT_PUBLIC_API_URL=https://release-guardian-api.onrender.com/api/v1` is set
-for Production and Preview. It is inlined into the client bundle at build time,
-so changing it requires a redeploy, not a restart.
+Put a TLS-terminating reverse proxy (or the platform's load balancer) in front
+of the API and the dashboard, and forward `X-Forwarded-For` / `X-Forwarded-Proto`
+so request logging and rate limiting see client addresses.
 
-Git-connected deploys are enabled: every push to `main` produces a production
-deployment. Verified from the build artifacts — the API URL is present in the
-served chunks.
+## Path 2 — Managed platform
 
-## Render service definitions
+The shape below is provider-neutral; the exact field names differ per platform.
+Create four compute resources from this repository:
 
-Create these four services from the same Git repository. All four need the
-Render GitHub App installed on the repository (see Blockers).
-
-| Service | Type | Dockerfile | Plan | Start command / command |
-|---|---|---|---|---|
-| `release-guardian-api` | web | `backend/Dockerfile` | `0.5c-512mb` | `uvicorn app.main:app --host 0.0.0.0 --port $PORT` |
-| `release-guardian-worker` | background worker | `backend/Dockerfile.worker` | `0.5c-512mb` | `celery -A app.workers.celery_app.celery_app worker -Q release_guardian --concurrency=2 --loglevel=info` |
-| `release-guardian-browser` | background worker | `backend/Dockerfile.worker` | `1c-2g` | `celery -A app.workers.celery_app.celery_app worker -Q browser,lighthouse --concurrency=2 --loglevel=info` |
-| `release-guardian-scheduler` | background worker | `backend/Dockerfile` | `0.5c-512mb` | `celery -A app.workers.celery_app.celery_app beat --loglevel=info` |
+| Service | Build | Plan sizing | Command |
+|---|---|---|---|
+| `api` | `backend/Dockerfile` (context `backend/`) | 0.5 vCPU / 512 MB | `uvicorn app.main:app --host 0.0.0.0 --port $PORT` |
+| `worker` | `backend/Dockerfile.worker` (context `backend/`) | 0.5 vCPU / 512 MB | `celery -A app.workers.celery_app.celery_app worker -Q release_guardian --concurrency=2 --loglevel=info` |
+| `browser-worker` | `backend/Dockerfile.worker` (context `backend/`) | 1 vCPU / 2 GB | `celery -A app.workers.celery_app.celery_app worker -Q browser,lighthouse --concurrency=2 --loglevel=info` |
+| `scheduler` | `backend/Dockerfile` (context `backend/`) | 0.5 vCPU / 512 MB | `celery -A app.workers.celery_app.celery_app beat --loglevel=info` |
 
 Notes:
 
-- **Docker context is `backend/`**, so `dockerfilePath` is `./Dockerfile` and
-  `dockerContext` is `./backend` (Render resolves both against the repository
-  root when set through the API as `backend/Dockerfile` plus
-  `dockerContext: ./backend`).
-- The API must bind `$PORT`. Render injects `PORT` (default 10000); the image
-  default hardcodes 8000 and will fail the health check otherwise.
-- Health check path: `/health`. Readiness (`/ready`) checks Redis and the
-  database and is the better signal once Key Value is reachable.
-- The scheduler is a **background worker**, not a cron job: `celery beat` must
-  stay resident to hold the schedule. Duplicate schedulers are safe — the
-  existing Redis lock in `app/services/locks.py` prevents double dispatch.
-- `Dockerfile.worker` carries Playwright plus the Lighthouse CLI and
-  `CHROME_PATH=/usr/local/bin/chrome`; the browser worker is the only service
-  that needs it.
+- **Build context is `backend/`.** Set the Dockerfile path relative to the
+  repository root (`backend/Dockerfile`) and the context to `backend/`.
+- **Bind `$PORT`.** Most platforms inject a `PORT` variable; the image default
+  hardcodes 8000 and will fail the health check if you do not override it.
+- **Health check:** `/health` for liveness. `/ready` additionally checks the
+  database and Redis and is the better readiness signal.
+- **The scheduler is a long-lived process, not a cron job.** `celery beat` must
+  stay resident. Running more than one is safe: the Redis lock in
+  `app/services/locks.py` prevents double dispatch.
+- **The browser worker needs Playwright browsers plus the Lighthouse CLI.**
+  `Dockerfile.worker` installs both and sets `CHROME_PATH`.
+- Background workers and cron jobs are paid features on several platforms even
+  when web services have a free tier. Budget for three workers.
 
-### Migrations
+### Object storage (optional)
+
+Screenshots, traces, HAR files, and Lighthouse reports are stored in any
+S3-compatible bucket. Without it, runs still execute and record upload failures
+as evidence; artifact links are simply empty.
+
+```env
+S3_ENDPOINT_URL=https://<account-id>.r2.cloudflarestorage.com
+S3_BUCKET=<bucket>
+S3_ACCESS_KEY=<key>
+S3_SECRET_KEY=<secret>
+S3_REGION=auto
+S3_USE_SSL=true
+```
+
+Keep the bucket private and serve artifacts only through the API's signed URLs.
+
+## Migrations
 
 The API owns schema changes; nothing else migrates.
 
-- API `preDeployCommand`: `alembic upgrade head`. This runs once per deploy
-  before traffic shifts, so a failed migration blocks the release.
-- Workers and the scheduler must **not** run Alembic. Concurrent
-  `upgrade head` from four services races on the version table.
-- Alembic head is `0eb1856e2764` (chain: `d2b26372f7ff` → `084556d3ce82` →
-  `a65a1c13f47e` → `9e8925d39560` → `0eb1856e2764`).
-- Free PostgreSQL expires 30 days after creation with no backups. Upgrade to a
-  paid plan or take `pg_dump` backups before 2026-11-19.
+- Run `alembic upgrade head` once, before the new API revision takes traffic
+  (a platform "pre-deploy command", an init container, or the Compose `api`
+  entrypoint).
+- Workers and the scheduler must **not** run Alembic. Concurrent upgrades race
+  on the version table.
+- Migrations are forward-only. Roll back application code only across commits
+  that are schema-compatible.
 
-### Environment variables
+## Environment variables
 
-Shared by all four services unless noted. Names come from
-`backend/app/core/config.py`; `ENVIRONMENT=production` activates the startup
-guard in `backend/app/core/production.py`, which refuses to boot on a default
-JWT secret, a short webhook secret, SQLite, `ALLOW_PRIVATE_URLS=true`, or a
-wildcard CORS origin.
+Names come from `backend/app/core/config.py`. `ENVIRONMENT=production`
+activates the startup guard in `backend/app/core/production.py`, which refuses
+to boot on a default JWT secret, a short webhook secret, SQLite,
+`ALLOW_PRIVATE_URLS=true`, or a wildcard CORS origin.
 
 | Variable | Value / source |
 |---|---|
 | `ENVIRONMENT` | `production` |
-| `DATABASE_URL` | Render PostgreSQL **internal** URL, `postgresql+psycopg://…` |
+| `DATABASE_URL` | `postgresql+psycopg://…` — never SQLite |
 | `DB_POOL_SIZE` | `5` |
 | `DB_MAX_OVERFLOW` | `5` |
-| `REDIS_URL` | Render Key Value **internal** URL |
+| `REDIS_URL` | `redis://…` or `rediss://…` |
 | `JWT_SECRET` | generated, ≥32 characters |
 | `WEBHOOK_SIGNING_SECRET` | generated, ≥16 characters |
-| `CORS_ORIGINS` | `["https://release-guardian.vercel.app"]` |
-| `ALLOW_PRIVATE_URLS` | `false` (never enable in production) |
+| `CORS_ORIGINS` | `["https://app.example.com"]` — exact origin, never `*` |
+| `ALLOW_PRIVATE_URLS` | `false` in any internet-facing deployment |
 | `WORKER_MODE` | `celery` |
 | `RATE_LIMIT_BACKEND` | `redis` |
 | `METRICS_ENABLED` | `true` |
+| `METRICS_TOKEN` | set it, or `/metrics` is public |
 | `READINESS_CHECK_REDIS` | `true` |
-| `S3_BUCKET` | empty — artifact storage disabled until R2 exists |
-| `NEXT_PUBLIC_API_URL` | Vercel only |
+| `S3_*` | only if artifact storage is configured |
+| `NEXT_PUBLIC_API_URL` | dashboard build only, e.g. `https://api.example.com/api/v1` |
 
-**Pool sizing matters.** `DB_POOL_SIZE=5` and `DB_MAX_OVERFLOW=5` cap each
-service at 10 connections. Three compute services plus the API stay well under
-Render's 100-connection limit; the defaults (10 + 20 = 30 each) would exhaust it
-and produce `too many connections` errors under load.
+**Pool sizing.** Each service owns its own pool. With four services, the defaults
+(`DB_POOL_SIZE=10`, `DB_MAX_OVERFLOW=20`) can exhaust a small managed database's
+connection limit and produce `too many connections` under load. `5` + `5` caps
+each service at ten connections.
 
-Leave `S3_BUCKET` empty until R2 is enabled. Artifact upload failures are
-captured as run evidence rather than failing the run, so the product degrades
-instead of breaking.
+`NEXT_PUBLIC_API_URL` is inlined into the client bundle at build time. Changing
+it requires rebuilding the dashboard, not restarting it.
 
-Optional integrations, only if used: `SMTP_*` (email notifications),
-`GITHUB_STATUS_TOKEN` (commit statuses), `METRICS_TOKEN` (protects `/metrics`).
-
-Generate secrets without echoing them into shell history:
+Generate secrets without writing them into shell history:
 
 ```bash
 python3 -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
+## Network isolation and SSRF (self-host requirement)
+
+Release Guardian fetches URLs supplied by its users. That is inherently an SSRF
+surface. The application validates scheme, host, and resolved address, re-checks
+every redirect hop, and intercepts browser subrequests, but application-layer
+checks alone are not sufficient against DNS rebinding (resolve-time validation,
+connect-time re-resolution).
+
+If you expose Release Guardian to untrusted users, you **must** also:
+
+1. Run the workers in a network that cannot reach your metadata service
+   (`169.254.169.254`), the control plane's private network, or internal
+   administrative interfaces.
+2. Apply an egress firewall that allows only public HTTP/HTTPS, and prefer
+   connection-time IP filtering so a rebinding answer cannot reach a private
+   address.
+3. Keep `ALLOW_PRIVATE_URLS=false`. It exists for local fixtures and tests only.
+
+Self-hosters who skip this are running an open proxy with extra steps.
+
 ## Smoke checks
 
-Run after every deploy. Replace the API host once the service exists.
+Replace the hosts with your own.
 
 | Check | Command | Expected |
 |---|---|---|
-| Frontend root | `curl -s -o /dev/null -w '%{http_code}' https://release-guardian.vercel.app/` | `200` |
-| Frontend title | `curl -s https://release-guardian.vercel.app/ \| grep -o '<title>[^<]*'` | `Release Guardian` |
-| API URL baked in | grep the served `/_next/static/chunks/*.js` for `onrender.com` | the configured host |
-| API liveness | `curl -s https://release-guardian-api.onrender.com/health` | `{"status":"ok"}` |
-| API readiness | `curl -s https://release-guardian-api.onrender.com/ready` | `200`, database and Redis ok |
-| Auth | `POST /api/v1/auth/register` then `POST /api/v1/auth/login` | token pair |
+| API liveness | `curl -s https://api.example.com/health` | `{"status":"ok"}` |
+| API readiness | `curl -s https://api.example.com/ready` | `200`, database and Redis ok |
+| Dashboard | `curl -s -o /dev/null -w '%{http_code}' https://app.example.com/` | `200` |
+| API URL baked in | inspect the served `/_next/static/chunks/*.js` | your API host |
+| Auth | `POST /api/v1/auth/register`, then `POST /api/v1/auth/login` | token pair |
 | Run path | create project → environment → monitor → run | run reaches `succeeded` |
-
-Verified on 2026-10-20: frontend `/`, `/login`, `/dashboard`, `/projects`,
-`/incidents` all return `200`, title renders, and the API URL is present in the
-served bundle. `/register` returns `404` because registration lives on
-`/login`. The API checks cannot pass yet — no Render service exists.
-
-## Blockers
-
-Each of these needs a browser session on an account we cannot authenticate as.
-
-### 1. Render cannot read the private repository
-
-Symptom, on service creation:
-
-```
-400 passed in repository URL is invalid or unfetchable:
-    https://github.com/livelyfun/Release-Guardian
-```
-
-The repository is private and no Git provider is connected to the Render
-account. This blocks **all** Render compute services.
-
-Fix: install the Render GitHub App and grant it access to this repository.
-
-<https://github.com/apps/render/installations/new>
-
-Then retry the service creation in the Render dashboard, or through the API
-using the service definitions above.
-
-### 2. Background workers require a payment method
-
-```
-402 Payment information is required
-```
-
-Free Render compute covers web services, PostgreSQL, Key Value, and static
-sites only. `background_worker` and `cron_job` are paid. The Celery worker,
-browser worker, and scheduler cannot be created on the free plan.
-
-**Spend is intentionally deferred**, so these three services are not created.
-When budget is approved, add a payment method and create them on the plans
-listed above — no other change is needed.
-
-### 3. Cloudflare R2 is not enabled
-
-```
-wrangler r2 bucket list → code 10042
-Please enable R2 through the Cloudflare Dashboard
-```
-
-Fix: enable R2 in the Cloudflare dashboard, create a bucket, then set
-`S3_ENDPOINT_URL`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, and
-`S3_REGION=auto` on the API and both workers. Until then artifacts are
-unavailable and the corresponding evidence links are empty.
-
-### 4. Key Value external access is IP-allowlisted
-
-Connecting to the Key Value external URL from a local machine returns
-`Client IP address is not in the allowlist`. This only affects local
-verification; services inside Render use the internal URL and are unaffected.
-Do not widen the allowlist to `0.0.0.0/0` to work around it.
-
-### 5. PostgreSQL external TLS
-
-Direct `psql`/psycopg connections to the external hostname fail the TLS
-handshake from this workstation (`SSL connection has been closed unexpectedly`)
-even though the certificate chain is valid. Run migrations from inside Render
-via the API `preDeployCommand` instead of from a laptop. This does not affect
-the deployed services, which use the internal URL.
-
-## Cost
-
-| Resource | Plan | Monthly |
-|---|---|---|
-| Vercel | Pro | $20 |
-| Render web service | `0.5c-512mb` | $7 |
-| Render worker | `0.5c-512mb` | $7 |
-| Render browser worker | `1c-2g` | $25 |
-| Render scheduler | `0.5c-512mb` | $7 |
-| Render PostgreSQL | `0.5c-1g` | $19 |
-| Render Key Value | `256mb` | $10 |
-| Cloudflare R2 | usage-based | ~$0 at this volume |
-| **Total** | | **~$95/mo** |
-
-Currently billed: $0. The free PostgreSQL and Key Value instances exist but are
-not backed by a payment method; the free PostgreSQL instance expires
-2026-11-19.
+| Browser path | run a browser check | screenshots/evidence recorded, or a clear storage error |
 
 ## Rollback
 
-- **Frontend:** `vercel rollback` promotes the previous production deployment.
-  Any commit on `main` is a valid target — builds are reproducible from Git.
-- **API:** Render keeps previous deploys; "Rollback" redeploys the prior image.
-  Migrations are forward-only, so roll back only across schema-compatible
-  commits.
-- **Database:** no automated backups on the free plan. Take `pg_dump` before
-  any deploy that includes a migration.
+- **Dashboard:** redeploy the previous build. Any commit on your release branch
+  is a reproducible target.
+- **API and workers:** redeploy the previous image and restart the workers so
+  they pick up the older task signatures.
+- **Database:** take a `pg_dump` before any deploy that includes a migration.
+  Managed free tiers often provide no backups and expire on a fixed schedule.

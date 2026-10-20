@@ -1,0 +1,23 @@
+node_modules/
+.next/
+out/
+.turbo/
+coverage/
+*.tsbuildinfo
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+.vercel/
+
+# Logs and editor noise
+*.log
+npm-debug.log*
+.DS_Store
+.idea/
+.vscode/
+
+# VCS
+.git/
+.gitignore

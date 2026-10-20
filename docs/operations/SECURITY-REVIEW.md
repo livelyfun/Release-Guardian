@@ -63,7 +63,7 @@ and egress-firewall verification are still required before production sign-off.
 | R1 | SSRF DNS rebinding/TOCTOU between validation and connection | High | Platform | Enforce egress firewall allowlist and connection-time IP filtering; document as deployment requirement |
 | R2 | Artifacts/screenshots may contain PII or tokens rendered on the page | High | Product/Security | Add retention limits, redaction rules, and access auditing; restrict bucket to private |
 | R3 | No individual access-token revocation (only JWT-secret rotation) | Medium | Backend | Add `jti` denylist/`token_version` per user |
-| R4 | Email notifier is a stub that always errors | Medium | Backend | Wire an SMTP/provider transport before enabling email channels |
+| R4 | Email notifier uses direct SMTP with no queued delivery or bounce handling; failures surface as notification errors | Medium | Backend | Route through a provider API with retries and bounce processing before relying on email for paging |
 | R5 | Dependency/SBOM scanning not in CI | Medium | Platform | Add `pip-audit`, `npm audit --omit=dev`, and image SBOM generation |
 | R6 | Secret scanner is regex-only and can miss novel formats | Medium | Security | Add provider-specific patterns and run against build artifacts, not just runtime env |
 | R7 | Rate limiting falls back to per-process memory during Redis outage | Medium | Platform | Alert on `rate_limit_redis_unavailable`; accept degraded quota during outage |

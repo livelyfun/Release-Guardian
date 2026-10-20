@@ -38,7 +38,7 @@ private URLs allowed (the fixture is loopback), and high rate limits.
 cd backend
 DATABASE_URL=sqlite:////tmp/opencode/rg-loadtest.db \
 WORKER_MODE=inline ALLOW_PRIVATE_URLS=true \
-JWT_SECRET=loadtest-secret-0123456789abcdef0123456789 \
+JWT_SECRET="$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')" \
 RATE_LIMIT_API_PER_MINUTE=100000 RATE_LIMIT_AUTH_PER_MINUTE=1000 \
 .venv/bin/uvicorn app.main:app --port 8010
 

@@ -1,0 +1,41 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# Local databases and dumps
+*.db
+*.sqlite3
+*.sql
+*.dump
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# Tests and their output
+tests/
+test-results/
+playwright-report/
+blob-report/
+*.har
+*.trace
+
+# Logs and editor noise
+*.log
+.DS_Store
+.idea/
+.vscode/
+
+# VCS
+.git/
+.gitignore

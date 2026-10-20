@@ -15,7 +15,7 @@ Release Guardian is a multi-tenant platform for validating website behavior via 
 - Planning only (no code changes, deps, infra, deploys)
 - Tenant isolation by default (server-side authZ + defense-in-depth)
 - SSRF/browser execution treated as high-risk and explicitly controlled
-- Preserve existing files (AGENTS.md, writing-block.md)
+- Preserve existing project documentation
 
 ## Architecture Decision (Summary)
 

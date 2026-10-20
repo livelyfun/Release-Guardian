@@ -1,0 +1,48 @@
+name: Feature request
+description: Propose a capability or improvement.
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do that the product does not support today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would you like to see? Include API or UI shape if relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you have tried, or other designs you weighed.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Checks and runs
+        - Browser journeys
+        - Lighthouse
+        - Baselines and regressions
+        - Incidents and notifications
+        - Deployments and releases
+        - Tenancy and access
+        - Observability
+        - Documentation and self-hosting
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This does not require disabling SSRF protections or private-URL blocking.
+        - label: I am willing to open a pull request for this.
