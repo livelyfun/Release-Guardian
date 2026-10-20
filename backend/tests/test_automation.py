@@ -1,6 +1,7 @@
 import app.services.checks as checks_module
 from app.services.checks import CheckOutcome, StepOutcome
 from app.workers.tasks.scheduler import enqueue_due_monitors
+
 from tests.conftest import auth_headers, register
 
 

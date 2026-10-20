@@ -1,12 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
-
 from app.api.v1.deps import Principal, get_principal, require_role
 from app.core.database import get_db
 from app.models.base import utcnow
 from app.models.release import Incident, IncidentEvent
 from app.schemas.release import IncidentOut, IncidentUpdate
 from app.services import audit
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.orm import Session
 
 router = APIRouter(tags=["incidents"])
 

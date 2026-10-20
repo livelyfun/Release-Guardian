@@ -1,17 +1,18 @@
 import json
 from types import SimpleNamespace
 
-import pytest
-
 import app.api.v1.endpoints.runs as runs_endpoint
 import app.services.checks as checks_module
+import pytest
 from app.core.config import Settings, settings
 from app.core.metrics import render_metrics
 from app.core.production import production_config_issues
 from app.core.rate_limit import _use_redis
-from app.services import storage
+from app.services import locks, storage
 from app.services.secret_scanner import mask_secret, scan_config
 from app.services.url_guard import UrlValidationError, validate_url
+from app.workers.tasks import scheduler as scheduler_module
+
 from tests.conftest import auth_headers, register
 
 
@@ -196,6 +197,53 @@ def test_rate_limit_backend_selection(monkeypatch):
     assert _use_redis() is True
     monkeypatch.setattr(settings, "worker_mode", "inline")
     assert _use_redis() is False
+
+
+def test_scheduler_skips_when_lock_held(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        scheduler_module,
+        "acquire_scheduler_lock",
+        lambda: (False, None),
+    )
+    monkeypatch.setattr(scheduler_module, "dispatch_run", lambda run_id: calls.append(run_id))
+
+    result = scheduler_module.enqueue_due_monitors()
+
+    assert result == {"queued": 0, "run_ids": [], "skipped": "lock_held"}
+    assert calls == []
+
+
+def test_scheduler_lock_falls_back_when_redis_unavailable(monkeypatch):
+    monkeypatch.setattr(settings, "worker_mode", "celery")
+
+    def unavailable():
+        raise ConnectionError("redis down")
+
+    monkeypatch.setattr(locks, "_client", unavailable)
+    acquired, token = locks.acquire_scheduler_lock()
+    assert acquired is True
+    assert token is None
+
+
+def test_deployment_skips_monitor_with_active_run(client, monkeypatch):
+    headers, _workspace, monitor = _setup_monitor(client)
+    monkeypatch.setattr(runs_endpoint, "dispatch_run", lambda run_id: None)
+    monkeypatch.setattr(settings, "max_active_runs_per_workspace", 0)
+
+    manual = client.post(f"/api/v1/monitors/{monitor['id']}/runs", headers=headers, json={})
+    assert manual.status_code == 201
+
+    deployment = client.post(
+        f"/api/v1/environments/{monitor['environment_id']}/deployments",
+        headers=headers,
+        json={"commit_sha": "abcdef1234567890", "branch": "main", "status": "success"},
+    )
+    assert deployment.status_code == 201
+    assert deployment.json()["status"] == "inconclusive"
+
+    runs = client.get(f"/api/v1/monitors/{monitor['id']}/runs", headers=headers).json()
+    assert len(runs) == 1
 
 
 def test_manual_trigger_rejects_duplicate_active_run(client, monkeypatch):

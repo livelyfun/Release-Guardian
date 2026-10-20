@@ -7,6 +7,7 @@ from app.core.metrics import SCHEDULER_ENQUEUED
 from app.models.base import utcnow
 from app.models.execution import Run
 from app.models.project import Monitor
+from app.services.locks import acquire_scheduler_lock, release_scheduler_lock
 from app.workers.dispatch import dispatch_run
 
 
@@ -19,6 +20,10 @@ def _as_utc(value: datetime | None) -> datetime | None:
 
 
 def enqueue_due_monitors(db: Session | None = None) -> dict:
+    acquired, lock_token = acquire_scheduler_lock()
+    if not acquired:
+        return {"queued": 0, "run_ids": [], "skipped": "lock_held"}
+
     owned = db is None
     session = db or SessionLocal()
     created: list[str] = []
@@ -54,6 +59,7 @@ def enqueue_due_monitors(db: Session | None = None) -> dict:
     finally:
         if owned:
             session.close()
+        release_scheduler_lock(lock_token)
 
     for run_id in created:
         dispatch_run(run_id)

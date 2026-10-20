@@ -76,7 +76,13 @@ def create_app() -> FastAPI:
 
     @app.get("/health", tags=["meta"])
     def health() -> dict:
-        return {"status": "ok", "service": settings.app_name, "environment": settings.environment}
+        return {
+            "status": "ok",
+            "service": settings.app_name,
+            "version": "0.1.0",
+            "environment": settings.environment,
+            "worker_mode": settings.worker_mode,
+        }
 
     @app.get("/ready", tags=["meta"])
     def ready() -> Response:

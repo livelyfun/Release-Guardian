@@ -1,6 +1,3 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy.orm import Session
-
 from app.api.v1.deps import get_current_user
 from app.core.database import get_db
 from app.core.rate_limit import auth_rate_limit
@@ -15,6 +12,8 @@ from app.models.identity import Membership, User, Workspace
 from app.schemas.auth import LoginRequest, RefreshRequest, RegisterRequest, TokenResponse, UserOut
 from app.services import audit
 from app.services.slug import slugify, unique_slug
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 

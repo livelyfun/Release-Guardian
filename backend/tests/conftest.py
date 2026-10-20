@@ -9,10 +9,9 @@ os.environ["RATE_LIMIT_AUTH_PER_MINUTE"] = "1000"
 os.environ["RATE_LIMIT_API_PER_MINUTE"] = "10000"
 
 import pytest
-from fastapi.testclient import TestClient
-
 from app.core.database import Base, SessionLocal, engine
 from app.main import app
+from fastapi.testclient import TestClient
 
 
 @pytest.fixture(autouse=True)

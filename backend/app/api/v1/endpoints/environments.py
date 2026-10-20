@@ -1,12 +1,11 @@
-from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy.orm import Session
-
 from app.api.v1.access import authorize_environment, authorize_project, get_environment, get_project
 from app.api.v1.deps import Principal, get_principal, require_role
 from app.core.database import get_db
 from app.models.project import Environment, Project
 from app.schemas.project import EnvironmentCreate, EnvironmentOut
 from app.services import audit
+from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy.orm import Session
 
 router = APIRouter(tags=["environments"])
 

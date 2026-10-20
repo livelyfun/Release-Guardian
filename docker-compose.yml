@@ -17,6 +17,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
     ports:
       - "6379:6379"
     healthcheck:
@@ -58,6 +59,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # Let Celery finish in-flight tasks after SIGTERM (acks_late is enabled).
+    stop_grace_period: 35s
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=info
 
   scheduler:

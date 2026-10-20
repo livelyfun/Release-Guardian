@@ -1,6 +1,3 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-
 from app.api.v1.deps import Principal, get_principal, require_role
 from app.core.database import get_db
 from app.models.release import NotificationAttempt, NotificationChannel
@@ -11,6 +8,8 @@ from app.schemas.release import (
     NotificationChannelUpdate,
 )
 from app.services import audit
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
 
 router = APIRouter(tags=["notifications"])
 

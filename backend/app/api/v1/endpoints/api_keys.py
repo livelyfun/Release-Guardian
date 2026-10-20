@@ -1,6 +1,3 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-
 from app.api.v1.deps import Principal, get_principal, require_role
 from app.core.database import get_db
 from app.models.base import utcnow
@@ -8,6 +5,8 @@ from app.models.identity import ApiKey
 from app.schemas.identity import ApiKeyCreate, ApiKeyOut
 from app.services import audit
 from app.services.slug import api_key as generate_api_key
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
 
 router = APIRouter(tags=["api-keys"])
 
