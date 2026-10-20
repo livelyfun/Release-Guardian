@@ -43,11 +43,11 @@ Each phase lists its exit criteria; a phase is complete only when the criteria a
 ### M4 — Monitoring engine (partial)
 - HTTP availability, status/content assertions, redirect validation, SSRF guard.
 - Playwright browser journeys with route-level SSRF checks, console/network
-  evidence, and a final screenshot artifact.
+  evidence, a final screenshot, optional Playwright trace/HAR capture, and
+  optional per-step screenshots.
 - Lighthouse audits with category scores, thresholds, and an optional JSON
   report artifact.
-- Remaining: Playwright traces/HAR capture, step-level screenshots, artifact
-  redaction.
+- Remaining: artifact redaction and staging validation of trace/HAR capture.
 - Exit criteria: a browser journey runs in the worker and retains a screenshot;
   Lighthouse retains scores/report. Met locally; staging evidence pending.
 

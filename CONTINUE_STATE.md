@@ -26,6 +26,8 @@
   windows, and consecutive-failure thresholds.
 - Dashboard shows usage totals, artifact previews, escalation rules, and
   maintenance windows; run detail links signed evidence.
+- Browser workers can optionally capture Playwright traces, HAR files, and
+  per-step screenshots in addition to the final screenshot.
 - Artifacts in S3-compatible storage; ownership is checked (artifact → run →
   environment → project) before issuing a 15-minute signed URL.
 - Usage metering by kind (`runs`, `browser_checks`, `lighthouse_checks`).

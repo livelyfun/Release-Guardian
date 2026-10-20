@@ -1,4 +1,6 @@
 import hashlib
+import os
+import tempfile
 import time
 from urllib.parse import urljoin, urlparse
 
@@ -70,6 +72,20 @@ def perform_browser_check(monitor, run_id: str | None = None) -> CheckOutcome:
     blocked_requests: list[str] = []
     summary: dict = {}
 
+    capture_trace = bool(config.get("capture_trace"))
+    capture_har = bool(config.get("capture_har"))
+    capture_step_screenshots = bool(config.get("screenshot_each_step"))
+    temp_paths: list[str] = []
+
+    def _temp_path(suffix: str) -> str:
+        handle = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+        handle.close()
+        temp_paths.append(handle.name)
+        return handle.name
+
+    trace_path = _temp_path(".zip") if capture_trace else None
+    har_path = _temp_path(".har") if capture_har else None
+
     def guard_route(route) -> None:
         """Validate every browser request (navigations, XHR, subresources)."""
         request_url = route.request.url
@@ -90,7 +106,18 @@ def perform_browser_check(monitor, run_id: str | None = None) -> CheckOutcome:
             browser = playwright.chromium.launch(
                 args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
             )
-            context = browser.new_context()
+            context = browser.new_context(
+                **(
+                    {
+                        "record_har_path": har_path,
+                        "record_har_content": "embed",
+                    }
+                    if capture_har and har_path
+                    else {}
+                )
+            )
+            if capture_trace and trace_path:
+                context.tracing.start(screenshots=True, snapshots=True, sources=False)
             page = context.new_page()
             page.route("**/*", guard_route)
             page.set_default_timeout(settings.step_timeout_seconds * 1000)
@@ -109,6 +136,27 @@ def perform_browser_check(monitor, run_id: str | None = None) -> CheckOutcome:
                 evidence: dict = {}
                 try:
                     _run_step(page, monitor.target_url, step, evidence)
+                    if capture_step_screenshots:
+                        try:
+                            image = page.screenshot(full_page=False)
+                            artifact = upload_bytes(
+                                run_id=run_id or monitor.id,
+                                kind="step_screenshot",
+                                data=image,
+                                mime_type="image/png",
+                                extension="png",
+                            )
+                            evidence["screenshot_key"] = artifact["storage_key"]
+                            summary.setdefault("step_screenshots", []).append(
+                                {
+                                    "step": name,
+                                    "key": artifact["storage_key"],
+                                    "url": artifact["url"],
+                                    "size_bytes": artifact["size_bytes"],
+                                }
+                            )
+                        except Exception as exc:  # noqa: BLE001 - evidence is best-effort
+                            evidence["screenshot_error"] = str(exc)[:300]
                     outcomes.append(
                         StepOutcome(
                             name=name,
@@ -150,12 +198,14 @@ def perform_browser_check(monitor, run_id: str | None = None) -> CheckOutcome:
                     )
                 )
 
-            summary = {
-                "final_url": page.url,
-                "console_errors": console_errors[:20],
-                "failed_requests": failed_requests[:20],
-                "blocked_requests": blocked_requests[:20],
-            }
+            summary.update(
+                {
+                    "final_url": page.url,
+                    "console_errors": console_errors[:20],
+                    "failed_requests": failed_requests[:20],
+                    "blocked_requests": blocked_requests[:20],
+                }
+            )
 
             # Capture the real final page before closing the browser.  Artifact
             # failures are recorded as evidence and never fail the check.
@@ -176,7 +226,37 @@ def perform_browser_check(monitor, run_id: str | None = None) -> CheckOutcome:
                 except Exception as exc:  # noqa: BLE001 - artifact capture is best-effort
                     summary["screenshot_error"] = str(exc)[:300]
 
+            if capture_trace and trace_path:
+                try:
+                    context.tracing.stop(path=trace_path)
+                    with open(trace_path, "rb") as trace_file:
+                        artifact = upload_bytes(
+                            run_id=run_id or monitor.id,
+                            kind="trace",
+                            data=trace_file.read(),
+                            mime_type="application/zip",
+                            extension="zip",
+                        )
+                    summary["trace_key"] = artifact["storage_key"]
+                    summary["trace_url"] = artifact["url"]
+                except Exception as exc:  # noqa: BLE001
+                    summary["trace_error"] = str(exc)[:300]
+
             context.close()
+            if capture_har and har_path:
+                try:
+                    with open(har_path, "rb") as har_file:
+                        artifact = upload_bytes(
+                            run_id=run_id or monitor.id,
+                            kind="har",
+                            data=har_file.read(),
+                            mime_type="application/json",
+                            extension="har",
+                        )
+                    summary["har_key"] = artifact["storage_key"]
+                    summary["har_url"] = artifact["url"]
+                except Exception as exc:  # noqa: BLE001
+                    summary["har_error"] = str(exc)[:300]
             browser.close()
     except Exception as exc:  # noqa: BLE001 - launch/navigation failures become evidence
         outcomes.append(
@@ -188,6 +268,12 @@ def perform_browser_check(monitor, run_id: str | None = None) -> CheckOutcome:
             )
         )
         summary = {"error": str(exc)[:500]}
+    finally:
+        for path in temp_paths:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
 
     overall = "passed" if outcomes and all(step.status == "passed" for step in outcomes) else "failed"
     duration_ms = int((time.perf_counter() - started) * 1000)

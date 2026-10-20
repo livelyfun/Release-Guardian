@@ -1,7 +1,10 @@
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import app.services.checks as checks_module
+from app.models.execution import Artifact, Run
 from app.services.checks import CheckOutcome, StepOutcome
+from app.workers.tasks.checks import _record_artifact
 from tests.conftest import auth_headers, register
 
 
@@ -221,3 +224,38 @@ def test_deployment_registration(client):
         f"/api/v1/deployments?workspace_id={workspace['id']}", headers=headers
     ).json()
     assert len(listed) == 1
+
+
+def test_artifact_metadata_is_recorded_for_all_evidence_types(client, db, monkeypatch):
+    monkeypatch.setattr(checks_module, "perform_http_check", _passed)
+    headers, workspace, monitor = _setup(client)
+    run = client.post(
+        f"/api/v1/monitors/{monitor['id']}/runs", headers=headers, json={}
+    ).json()
+
+    outcome = SimpleNamespace(
+        summary={
+            "screenshot_key": "artifacts/run/screenshot.png",
+            "screenshot_url": "https://storage/screenshot.png",
+            "trace_key": "artifacts/run/trace.zip",
+            "trace_url": "https://storage/trace.zip",
+            "har_key": "artifacts/run/network.har",
+            "report_key": "artifacts/run/lighthouse.json",
+            "step_screenshots": [
+                {
+                    "key": "artifacts/run/step-1.png",
+                    "url": "https://storage/step-1.png",
+                    "size_bytes": 10,
+                }
+            ],
+        }
+    )
+    stored_run = db.get(Run, run["id"])
+    _record_artifact(db, stored_run, outcome)
+    db.commit()
+
+    kinds = {
+        artifact.kind
+        for artifact in db.query(Artifact).filter(Artifact.run_id == run["id"]).all()
+    }
+    assert kinds == {"screenshot", "trace", "har", "lighthouse", "step_screenshot"}

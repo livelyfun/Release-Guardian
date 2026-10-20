@@ -23,24 +23,66 @@ from app.services.runs import refresh_deployment_status
 logger = logging.getLogger("release_guardian.worker")
 
 
-def _record_artifact(db, run: Run, outcome) -> None:
-    """Persist artifact metadata for a run when the check produced one."""
-    storage_key = outcome.summary.get("screenshot_key")
-    if not storage_key:
-        return
+def _add_artifact(
+    db,
+    run: Run,
+    *,
+    kind: str,
+    storage_key: str,
+    url: str | None = None,
+    size_bytes: int | None = None,
+    mime_type: str | None = None,
+) -> None:
     existing = db.query(Artifact).filter(Artifact.storage_key == storage_key).one_or_none()
     if existing is not None:
         return
     db.add(
         Artifact(
             run_id=run.id,
-            kind="screenshot",
+            kind=kind,
             storage_key=storage_key,
-            url=outcome.summary.get("screenshot_url"),
-            size_bytes=outcome.summary.get("screenshot_size_bytes"),
-            mime_type="image/png",
+            url=url,
+            size_bytes=size_bytes,
+            mime_type=mime_type,
         )
     )
+
+
+def _record_artifact(db, run: Run, outcome) -> None:
+    """Persist metadata for every artifact produced by a check."""
+    summary = outcome.summary or {}
+    for kind, key_field, mime_type in (
+        ("screenshot", "screenshot_key", "image/png"),
+        ("trace", "trace_key", "application/zip"),
+        ("har", "har_key", "application/json"),
+        ("lighthouse", "report_key", "application/json"),
+    ):
+        storage_key = summary.get(key_field)
+        if not storage_key:
+            continue
+        _add_artifact(
+            db,
+            run,
+            kind=kind,
+            storage_key=storage_key,
+            url=summary.get(key_field.replace("_key", "_url")),
+            size_bytes=summary.get(key_field.replace("_key", "_size_bytes")),
+            mime_type=mime_type,
+        )
+
+    for step_artifact in summary.get("step_screenshots") or []:
+        storage_key = (step_artifact or {}).get("key")
+        if not storage_key:
+            continue
+        _add_artifact(
+            db,
+            run,
+            kind="step_screenshot",
+            storage_key=storage_key,
+            url=step_artifact.get("url"),
+            size_bytes=step_artifact.get("size_bytes"),
+            mime_type="image/png",
+        )
 
 
 def execute_run(run_id: str) -> dict:
