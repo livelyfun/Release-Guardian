@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { Badge, Card, ErrorNotice, PageHeader, Spinner, Stat, formatDate } from "@/components/ui";
 import { useApi } from "@/lib/hooks";
-import type { Incident, Project, Workspace } from "@/lib/types";
+import type { Incident, Project, UsageSummary, Workspace } from "@/lib/types";
 
 export default function DashboardPage() {
   const workspaces = useApi<Workspace[]>("/workspaces");
@@ -18,6 +18,10 @@ export default function DashboardPage() {
   const incidents = useApi<Incident[]>(
     active ? `/incidents?workspace_id=${active.id}&status=open` : null,
   );
+  const usage = useApi<UsageSummary[]>(
+    active ? `/workspaces/${active.id}/usage/summary` : null,
+  );
+  const totalChecks = usage.data?.reduce((total, row) => total + row.quantity, 0);
 
   if (workspaces.loading) return <Spinner label="Loading workspace" />;
   if (workspaces.error) return <ErrorNotice message={workspaces.error} />;
@@ -49,8 +53,12 @@ export default function DashboardPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label="Projects" value={projects.data?.length ?? "—"} />
         <Stat label="Open incidents" value={incidents.data?.length ?? "—"} />
-        <Stat label="Workspace role" value={active.role} />
-        <Stat label="Environment" value={active.slug} hint="Workspace slug" />
+        <Stat
+          label="Checks recorded"
+          value={totalChecks !== undefined ? Math.round(totalChecks) : "—"}
+          hint="All monitor runs"
+        />
+        <Stat label="Workspace role" value={active.role} hint={active.slug} />
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
@@ -107,6 +115,29 @@ export default function DashboardPage() {
           )}
         </Card>
       </div>
+
+      <Card className="mt-6 p-5">
+        <h2 className="mb-3 text-sm font-semibold">Usage by check type</h2>
+        {usage.loading ? (
+          <Spinner />
+        ) : usage.error ? (
+          <ErrorNotice message={usage.error} />
+        ) : usage.data && usage.data.length > 0 ? (
+          <ul className="grid gap-2 sm:grid-cols-3">
+            {usage.data.map((row) => (
+              <li
+                key={row.metric}
+                className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              >
+                <span className="capitalize text-slate-600">{row.metric.split("_").join(" ")}</span>
+                <span className="font-medium">{Math.round(row.quantity)}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-slate-500">No checks recorded yet.</p>
+        )}
+      </Card>
     </>
   );
 }

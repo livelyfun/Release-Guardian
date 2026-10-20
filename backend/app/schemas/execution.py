@@ -38,3 +38,14 @@ class RunOut(ORMModel):
 
 class RunDetailOut(RunOut):
     steps: list[StepResultOut]
+
+
+class ArtifactOut(ORMModel):
+    id: str
+    run_id: str
+    kind: str
+    storage_key: str
+    url: str | None
+    size_bytes: int | None
+    mime_type: str | None
+    created_at: datetime

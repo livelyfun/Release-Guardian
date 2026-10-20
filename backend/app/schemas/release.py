@@ -145,6 +145,11 @@ class UsageRecordOut(ORMModel):
     recorded_at: datetime
 
 
+class UsageSummaryOut(BaseModel):
+    metric: str
+    quantity: float
+
+
 class MaintenanceWindowCreate(BaseModel):
     project_id: str | None = None
     environment_id: str | None = None

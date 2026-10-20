@@ -28,7 +28,7 @@
 | `/test-runs` | GET/GET/{id} | workspace member | includes job_executions |
 | `/job-executions` | GET/GET/{id} | workspace member | status, attempts, result_summary |
 | `/job-executions/{id}/steps` | GET | workspace member | step timeline |
-| `/artifacts/{id}/signed-url` | GET | workspace member | short-lived signed URL; checks tenant scope |
+| `/workspaces/{id}/artifacts/signed-url?artifact_key=` | GET | workspace member | short-lived signed URL; verifies artifact ownership |
 | `/baselines` | GET/PATCH | workspace member | N-samples, rotation |
 | `/incidents` | GET/PATCH/POST | workspace member | lifecycle, ack/resolve |
 | `/incidents/{id}/events` | GET | workspace member | timeline (append-only) |

@@ -7,8 +7,11 @@ import { apiClient, ApiError } from "@/lib/api";
 import { useActiveWorkspaceId, useApi } from "@/lib/hooks";
 import type {
   ChannelKind,
+  EscalationRule,
+  MaintenanceWindow,
   NotificationAttempt,
   NotificationChannel,
+  Severity,
   User,
   Workspace,
 } from "@/lib/types";
@@ -34,8 +37,39 @@ export default function SettingsPage() {
     attemptsFor ? `/notification-channels/${attemptsFor}/attempts` : null,
   );
 
+  const escalations = useApi<EscalationRule[]>(
+    activeWorkspace ? `/workspaces/${activeWorkspace}/escalation-rules` : null,
+  );
+  const [escName, setEscName] = useState("");
+  const [escSeverity, setEscSeverity] = useState<Severity>("high");
+  const [escMinutes, setEscMinutes] = useState("30");
+  const [escKind, setEscKind] = useState<ChannelKind>("webhook");
+  const [escTarget, setEscTarget] = useState("");
+  const [escError, setEscError] = useState<string | null>(null);
+  const [escBusy, setEscBusy] = useState(false);
+
+  const windows = useApi<MaintenanceWindow[]>(
+    activeWorkspace ? `/workspaces/${activeWorkspace}/maintenance-windows` : null,
+  );
+  const [windowReason, setWindowReason] = useState("");
+  const [windowStart, setWindowStart] = useState("");
+  const [windowEnd, setWindowEnd] = useState("");
+  const [windowError, setWindowError] = useState<string | null>(null);
+  const [windowBusy, setWindowBusy] = useState(false);
+
   useEffect(() => {
     setActiveId(window.localStorage.getItem("rg_workspace_id"));
+  }, []);
+
+  useEffect(() => {
+    const start = new Date();
+    const end = new Date(start.getTime() + 2 * 60 * 60 * 1000);
+    const local = (date: Date) => {
+      const offset = date.getTimezoneOffset() * 60 * 1000;
+      return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+    };
+    setWindowStart(local(start));
+    setWindowEnd(local(end));
   }, []);
 
   function selectWorkspace(id: string) {
@@ -101,6 +135,75 @@ export default function SettingsPage() {
       channels.reload();
     } catch (err) {
       setChannelError(err instanceof ApiError ? err.message : "Failed to delete channel");
+    }
+  }
+
+  async function createEscalation(event: React.FormEvent) {
+    event.preventDefault();
+    if (!activeWorkspace) return;
+    setEscBusy(true);
+    setEscError(null);
+    try {
+      const config = escKind === "webhook" ? { url: escTarget } : { to: escTarget };
+      await apiClient.post(`/workspaces/${activeWorkspace}/escalation-rules`, {
+        name: escName,
+        severity: escSeverity,
+        minutes_to_escalate: Number(escMinutes),
+        kind: escKind,
+        config,
+      });
+      setEscName("");
+      setEscTarget("");
+      escalations.reload();
+    } catch (err) {
+      setEscError(err instanceof ApiError ? err.message : "Failed to create escalation rule");
+    } finally {
+      setEscBusy(false);
+    }
+  }
+
+  async function removeEscalation(id: string) {
+    setEscError(null);
+    try {
+      await apiClient.del(`/escalation-rules/${id}`);
+      escalations.reload();
+    } catch (err) {
+      setEscError(err instanceof ApiError ? err.message : "Failed to delete escalation rule");
+    }
+  }
+
+  async function createWindow(event: React.FormEvent) {
+    event.preventDefault();
+    if (!activeWorkspace) return;
+    setWindowBusy(true);
+    setWindowError(null);
+    try {
+      const starts = new Date(windowStart);
+      const ends = new Date(windowEnd);
+      if (!(starts < ends)) {
+        throw new ApiError(400, "End time must be after start time");
+      }
+      await apiClient.post(`/workspaces/${activeWorkspace}/maintenance-windows`, {
+        reason: windowReason,
+        starts_at: starts.toISOString(),
+        ends_at: ends.toISOString(),
+      });
+      setWindowReason("");
+      windows.reload();
+    } catch (err) {
+      setWindowError(err instanceof ApiError ? err.message : "Failed to create maintenance window");
+    } finally {
+      setWindowBusy(false);
+    }
+  }
+
+  async function removeWindow(id: string) {
+    setWindowError(null);
+    try {
+      await apiClient.del(`/maintenance-windows/${id}`);
+      windows.reload();
+    } catch (err) {
+      setWindowError(err instanceof ApiError ? err.message : "Failed to delete maintenance window");
     }
   }
 
@@ -301,6 +404,226 @@ export default function SettingsPage() {
           {channelError ? <ErrorNotice message={channelError} /> : null}
           <button className="btn-primary" disabled={channelBusy || !activeWorkspace}>
             {channelBusy ? "Adding…" : "Add channel"}
+          </button>
+        </form>
+      </Card>
+
+      <Card className="mt-6 p-6">
+        <h2 className="mb-1 text-sm font-semibold">Escalation rules</h2>
+        <p className="mb-4 text-sm text-slate-500">
+          Page another destination when an incident stays open for a set time. Rules fire
+          at most once per incident, latest threshold last.
+        </p>
+
+        {!activeWorkspace ? (
+          <p className="text-sm text-slate-500">Select a workspace to manage escalations.</p>
+        ) : escalations.loading ? (
+          <Spinner />
+        ) : escalations.error ? (
+          <ErrorNotice message={escalations.error} />
+        ) : escalations.data && escalations.data.length > 0 ? (
+          <ul className="space-y-2">
+            {escalations.data.map((rule) => (
+              <li
+                key={rule.id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              >
+                <div>
+                  <p className="font-medium">
+                    {rule.name}
+                    <span className="ml-2 text-xs uppercase text-slate-500">
+                      {rule.severity}
+                    </span>
+                  </p>
+                  <p className="break-all text-xs text-slate-500">
+                    after {rule.minutes_to_escalate} min via {rule.channel_kind} ·{" "}
+                    {rule.channel_config.url ?? rule.channel_config.to ?? "No target"}
+                  </p>
+                </div>
+                <button
+                  className="text-xs text-red-600 hover:underline"
+                  onClick={() => removeEscalation(rule.id)}
+                >
+                  Delete
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-slate-500">No escalation rules yet.</p>
+        )}
+
+        <form onSubmit={createEscalation} className="mt-5 space-y-3 border-t border-slate-100 pt-5">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div>
+              <label className="label" htmlFor="escalation-name">
+                Rule name
+              </label>
+              <input
+                id="escalation-name"
+                className="input"
+                value={escName}
+                onChange={(event) => setEscName(event.target.value)}
+                placeholder="page-oncall"
+                required
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor="escalation-severity">
+                Severity
+              </label>
+              <select
+                id="escalation-severity"
+                className="input"
+                value={escSeverity}
+                onChange={(event) => setEscSeverity(event.target.value as Severity)}
+              >
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="escalation-minutes">
+                After (minutes)
+              </label>
+              <input
+                id="escalation-minutes"
+                className="input"
+                type="number"
+                min={0}
+                max={10080}
+                value={escMinutes}
+                onChange={(event) => setEscMinutes(event.target.value)}
+                required
+              />
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-[140px_1fr]">
+            <div>
+              <label className="label" htmlFor="escalation-kind">
+                Channel
+              </label>
+              <select
+                id="escalation-kind"
+                className="input"
+                value={escKind}
+                onChange={(event) => setEscKind(event.target.value as ChannelKind)}
+              >
+                <option value="webhook">Webhook</option>
+                <option value="email">Email</option>
+              </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="escalation-target">
+                {escKind === "webhook" ? "Webhook URL" : "Email recipient"}
+              </label>
+              <input
+                id="escalation-target"
+                className="input"
+                value={escTarget}
+                onChange={(event) => setEscTarget(event.target.value)}
+                placeholder={
+                  escKind === "webhook"
+                    ? "https://hooks.example.com/escalation"
+                    : "manager@example.com"
+                }
+                required
+              />
+            </div>
+          </div>
+          {escError ? <ErrorNotice message={escError} /> : null}
+          <button className="btn-primary" disabled={escBusy || !activeWorkspace}>
+            {escBusy ? "Adding…" : "Add escalation rule"}
+          </button>
+        </form>
+      </Card>
+
+      <Card className="mt-6 p-6">
+        <h2 className="mb-1 text-sm font-semibold">Maintenance windows</h2>
+        <p className="mb-4 text-sm text-slate-500">
+          Checks keep running, but incidents are suppressed while a window is active.
+          Windows created here apply to the whole workspace.
+        </p>
+
+        {!activeWorkspace ? (
+          <p className="text-sm text-slate-500">Select a workspace to manage windows.</p>
+        ) : windows.loading ? (
+          <Spinner />
+        ) : windows.error ? (
+          <ErrorNotice message={windows.error} />
+        ) : windows.data && windows.data.length > 0 ? (
+          <ul className="space-y-2">
+            {windows.data.map((window) => (
+              <li
+                key={window.id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              >
+                <div>
+                  <p className="font-medium">{window.reason || "Scheduled maintenance"}</p>
+                  <p className="text-xs text-slate-500">
+                    {new Date(window.starts_at).toLocaleString()} →{" "}
+                    {new Date(window.ends_at).toLocaleString()}
+                  </p>
+                </div>
+                <button
+                  className="text-xs text-red-600 hover:underline"
+                  onClick={() => removeWindow(window.id)}
+                >
+                  Delete
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-slate-500">No maintenance windows scheduled.</p>
+        )}
+
+        <form onSubmit={createWindow} className="mt-5 space-y-3 border-t border-slate-100 pt-5">
+          <div>
+            <label className="label" htmlFor="window-reason">
+              Reason
+            </label>
+            <input
+              id="window-reason"
+              className="input"
+              value={windowReason}
+              onChange={(event) => setWindowReason(event.target.value)}
+              placeholder="Production deploy"
+            />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="label" htmlFor="window-start">
+                Starts
+              </label>
+              <input
+                id="window-start"
+                className="input"
+                type="datetime-local"
+                value={windowStart}
+                onChange={(event) => setWindowStart(event.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor="window-end">
+                Ends
+              </label>
+              <input
+                id="window-end"
+                className="input"
+                type="datetime-local"
+                value={windowEnd}
+                onChange={(event) => setWindowEnd(event.target.value)}
+                required
+              />
+            </div>
+          </div>
+          {windowError ? <ErrorNotice message={windowError} /> : null}
+          <button className="btn-primary" disabled={windowBusy || !activeWorkspace}>
+            {windowBusy ? "Scheduling…" : "Schedule window"}
           </button>
         </form>
       </Card>

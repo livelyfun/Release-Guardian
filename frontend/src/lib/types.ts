@@ -122,7 +122,50 @@ export interface NotificationAttempt {
   incident_id: string | null;
   status: string;
   attempt: number;
+  subject: string | null;
+  body: string | null;
+  next_attempt_at: string | null;
   error: string | null;
+  created_at: string;
+}
+
+export interface Artifact {
+  id: string;
+  run_id: string;
+  kind: string;
+  storage_key: string;
+  url: string | null;
+  size_bytes: number | null;
+  mime_type: string | null;
+  created_at: string;
+}
+
+export interface UsageSummary {
+  metric: string;
+  quantity: number;
+}
+
+export interface EscalationRule {
+  id: string;
+  workspace_id: string;
+  name: string;
+  severity: Severity;
+  minutes_to_escalate: number;
+  channel_kind: ChannelKind;
+  channel_config: Record<string, string>;
+  is_enabled: boolean;
+  created_at: string;
+}
+
+export interface MaintenanceWindow {
+  id: string;
+  workspace_id: string;
+  project_id: string | null;
+  environment_id: string | null;
+  monitor_id: string | null;
+  reason: string;
+  starts_at: string;
+  ends_at: string;
   created_at: string;
 }
 

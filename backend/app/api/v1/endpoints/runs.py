@@ -4,9 +4,9 @@ from sqlalchemy.orm import Session
 from app.api.v1.access import authorize_monitor, authorize_run, get_monitor, get_run
 from app.api.v1.deps import Principal, get_principal, require_role
 from app.core.database import get_db
-from app.models.execution import Run
+from app.models.execution import Artifact, Run
 from app.models.project import Environment, Project
-from app.schemas.execution import RunCreate, RunDetailOut, RunOut
+from app.schemas.execution import ArtifactOut, RunCreate, RunDetailOut, RunOut
 from app.services import audit
 from app.services.capacity import (
     CapacityError,
@@ -116,3 +116,20 @@ def get_run_detail(
     run = get_run(db, run_id)
     authorize_run(db, run, user)
     return RunDetailOut.model_validate(run)
+
+
+@router.get("/runs/{run_id}/artifacts", response_model=list[ArtifactOut])
+def list_run_artifacts(
+    run_id: str,
+    user: Principal = Depends(get_principal),
+    db: Session = Depends(get_db),
+) -> list[ArtifactOut]:
+    run = get_run(db, run_id)
+    authorize_run(db, run, user)
+    artifacts = (
+        db.query(Artifact)
+        .filter(Artifact.run_id == run.id)
+        .order_by(Artifact.created_at)
+        .all()
+    )
+    return [ArtifactOut.model_validate(artifact) for artifact in artifacts]

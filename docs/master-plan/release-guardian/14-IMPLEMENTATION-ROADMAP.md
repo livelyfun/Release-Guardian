@@ -74,7 +74,8 @@ Each phase lists its exit criteria; a phase is complete only when the criteria a
 
 ### M7 — Product experience and platform API (partial)
 - Next.js dashboard for workspaces, projects, monitors, runs, deployments,
-  incidents, keys, audit, usage, and artifact links.
+  incidents, keys, audit, usage totals, artifact previews, escalation rules,
+  and maintenance windows.
 - API-key authentication and workspace role gates.
 - Remaining: visual test builder, exports, team management UI, CLI.
 - Exit criteria: a new user completes the core workflow without API calls.

@@ -24,6 +24,8 @@
   adapters, escalation ladder with CRUD API and scheduled retries, and
   notification retry backoff/jitter with a per-attempt cap, maintenance
   windows, and consecutive-failure thresholds.
+- Dashboard shows usage totals, artifact previews, escalation rules, and
+  maintenance windows; run detail links signed evidence.
 - Artifacts in S3-compatible storage; ownership is checked (artifact → run →
   environment → project) before issuing a 15-minute signed URL.
 - Usage metering by kind (`runs`, `browser_checks`, `lighthouse_checks`).

@@ -128,6 +128,15 @@ def test_artifact_signed_url_requires_workspace_ownership(client, monkeypatch):
     finally:
         db.close()
 
+    listed = client.get(f"/api/v1/runs/{run_id}/artifacts", headers=headers)
+    assert listed.status_code == 200
+    assert [artifact["storage_key"] for artifact in listed.json()] == [storage_key]
+
+    usage = client.get(
+        f"/api/v1/workspaces/{workspace['id']}/usage/summary", headers=headers
+    ).json()
+    assert any(row["metric"] == "runs" and row["quantity"] >= 1 for row in usage)
+
     monkeypatch.setattr(
         artifacts_endpoint, "get_signed_url", lambda key: f"https://signed.example/{key}"
     )

@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.v1.deps import Principal, get_principal, require_role
 from app.core.database import get_db
 from app.models.release import UsageRecord
-from app.schemas.release import UsageRecordOut
+from app.schemas.release import UsageRecordOut, UsageSummaryOut
 
 router = APIRouter(tags=["usage"])
 
@@ -33,3 +34,28 @@ def list_usage(
         query = query.filter(UsageRecord.metric == metric)
     records = query.order_by(UsageRecord.recorded_at.desc()).all()
     return [UsageRecordOut.model_validate(record) for record in records]
+
+
+@router.get(
+    "/workspaces/{workspace_id}/usage/summary",
+    response_model=list[UsageSummaryOut],
+    status_code=status.HTTP_200_OK,
+)
+def usage_summary(
+    workspace_id: str,
+    user: Principal = Depends(get_principal),
+    db: Session = Depends(get_db),
+) -> list[UsageSummaryOut]:
+    """Per-metric totals for dashboard and quota reporting."""
+    _authorize_workspace(db, workspace_id, user, "viewer")
+    rows = (
+        db.query(UsageRecord.metric, func.sum(UsageRecord.quantity))
+        .filter(UsageRecord.workspace_id == workspace_id)
+        .group_by(UsageRecord.metric)
+        .order_by(UsageRecord.metric)
+        .all()
+    )
+    return [
+        UsageSummaryOut(metric=metric, quantity=float(quantity or 0.0))
+        for metric, quantity in rows
+    ]
