@@ -6,15 +6,20 @@ import pytest
 
 import app.api.v1.endpoints.runs as runs_endpoint
 import app.services.checks as checks_module
+import app.services.incidents as incidents_module
 import app.workers.tasks.checks as worker_checks
 from app.core.config import Settings, settings
 from app.core.database import SessionLocal
 from app.core.metrics import render_metrics
 from app.core.production import production_config_issues
 from app.core.rate_limit import _use_redis
+from app.core.security import sign_webhook, verify_webhook_signature
 from app.models.base import utcnow
 from app.models.execution import Run
+from app.models.project import Environment
+from app.models.release import Incident, IncidentEvent
 from app.services import locks, storage
+from app.services.incidents import escalate_due_incidents
 from app.services.secret_scanner import mask_secret, scan_config
 from app.services.url_guard import UrlValidationError, validate_url
 from app.workers.tasks import maintenance
@@ -60,6 +65,14 @@ def test_metrics_endpoint_exposes_series(client):
     assert "# TYPE rg_api_requests_total counter" in body
     assert 'rg_api_requests_total{method="GET",route="/health",status="200"}' in body
     assert "# TYPE rg_runs_total counter" in body
+
+
+def test_metrics_token_protects_endpoint(client, monkeypatch):
+    monkeypatch.setattr(settings, "metrics_token", "scrape-token")
+    assert client.get("/metrics").status_code == 404
+    authorized = client.get("/metrics", headers={"Authorization": "Bearer scrape-token"})
+    assert authorized.status_code == 200
+    assert "rg_api_requests_total" in authorized.text
 
 
 def test_storage_outage_raises_controlled_error(monkeypatch):
@@ -160,6 +173,25 @@ def test_secret_scanner_detects_and_masks():
     assert findings
     assert raw not in findings[0].value
     assert mask_secret("short") == "*****"
+
+
+def test_secret_scanner_ignores_infrastructure_ids():
+    findings = scan_config(
+        {
+            "SHELL_SESSION_ID": "0123456789abcdef0123456789abcdef",
+            "INVOCATION_ID": "fedcba9876543210fedcba9876543210",
+        }
+    )
+    assert findings == []
+
+
+def test_webhook_signature_roundtrip_and_tamper_detection():
+    body = b'{"subject":"incident"}'
+    timestamp = "1790000000"
+    signature = sign_webhook(body, timestamp)
+    assert verify_webhook_signature(body, timestamp, signature) is True
+    assert verify_webhook_signature(body + b" ", timestamp, signature) is False
+    assert verify_webhook_signature(body, "1790000001", signature) is False
 
 
 def test_production_config_guard_flags_defaults():
@@ -357,3 +389,170 @@ def test_manual_trigger_enforces_workspace_capacity(client, monkeypatch):
     second = client.post(f"/api/v1/monitors/{second_monitor['id']}/runs", headers=headers, json={})
     assert second.status_code == 429
     assert "active-run limit" in second.json()["error"]["message"]
+
+
+class _RecordingNotifier:
+    def __init__(self, sent: list):
+        self.sent = sent
+
+    def send(self, notification) -> None:
+        self.sent.append(notification)
+
+
+class _BrokenNotifier:
+    def send(self, notification) -> None:
+        raise RuntimeError("provider unavailable")
+
+
+def _make_incident(db, workspace: dict, monitor: dict, *, severity: str, minutes_old: int) -> str:
+    environment = db.get(Environment, monitor["environment_id"])
+    incident = Incident(
+        workspace_id=workspace["id"],
+        project_id=environment.project_id,
+        environment_id=environment.id,
+        title="Escalation test incident",
+        severity=severity,
+        dedupe_key=f"test:{severity}:{utcnow().timestamp()}",
+        opened_at=utcnow() - timedelta(minutes=minutes_old),
+    )
+    db.add(incident)
+    db.commit()
+    return incident.id
+
+
+def test_escalation_ladder_fires_once_and_matches_severity(client, monkeypatch):
+    headers, workspace, monitor = _setup_monitor(client)
+
+    for name, minutes in (("page-oncall", 5), ("page-manager", 10)):
+        response = client.post(
+            f"/api/v1/workspaces/{workspace['id']}/escalation-rules",
+            headers=headers,
+            json={
+                "name": name,
+                "severity": "high",
+                "minutes_to_escalate": minutes,
+                "kind": "webhook",
+                "config": {"url": "https://example.com/rg-hook"},
+            },
+        )
+        assert response.status_code == 201, response.text
+
+    listed = client.get(
+        f"/api/v1/workspaces/{workspace['id']}/escalation-rules", headers=headers
+    ).json()
+    assert [rule["name"] for rule in listed] == ["page-oncall", "page-manager"]
+
+    duplicate = client.post(
+        f"/api/v1/workspaces/{workspace['id']}/escalation-rules",
+        headers=headers,
+        json={
+            "name": "page-oncall",
+            "severity": "high",
+            "minutes_to_escalate": 1,
+            "kind": "webhook",
+            "config": {"url": "https://example.com/rg-hook"},
+        },
+    )
+    assert duplicate.status_code == 409
+
+    invalid = client.post(
+        f"/api/v1/workspaces/{workspace['id']}/escalation-rules",
+        headers=headers,
+        json={
+            "name": "broken",
+            "severity": "high",
+            "minutes_to_escalate": 1,
+            "kind": "webhook",
+            "config": {},
+        },
+    )
+    assert invalid.status_code == 422
+
+    db = SessionLocal()
+    try:
+        incident_id = _make_incident(db, workspace, monitor, severity="high", minutes_old=11)
+        _make_incident(db, workspace, monitor, severity="medium", minutes_old=60)
+    finally:
+        db.close()
+
+    sent: list = []
+    monkeypatch.setattr(
+        incidents_module, "build_notifier", lambda kind, config: _RecordingNotifier(sent)
+    )
+    first = escalate_due_incidents()
+    assert len(first["escalated"]) == 2
+    assert len(sent) == 2
+
+    second = escalate_due_incidents()
+    assert second == {"escalated": [], "failed": []}
+    assert len(sent) == 2
+
+    resolved = client.patch(
+        f"/api/v1/incidents/{incident_id}", headers=headers, json={"status": "resolved"}
+    )
+    assert resolved.status_code == 200
+    assert escalate_due_incidents() == {"escalated": [], "failed": []}
+
+    db = SessionLocal()
+    try:
+        types = [
+            event.type
+            for event in db.query(IncidentEvent)
+            .filter(IncidentEvent.incident_id == incident_id)
+            .all()
+        ]
+    finally:
+        db.close()
+    assert types.count("escalated") == 2
+    assert "status:resolved" in types
+
+
+def test_escalation_failure_is_recorded_and_retried(client, monkeypatch):
+    headers, workspace, monitor = _setup_monitor(client)
+    created = client.post(
+        f"/api/v1/workspaces/{workspace['id']}/escalation-rules",
+        headers=headers,
+        json={
+            "name": "retry-me",
+            "severity": "high",
+            "minutes_to_escalate": 0,
+            "kind": "webhook",
+            "config": {"url": "https://example.com/rg-hook"},
+        },
+    )
+    assert created.status_code == 201
+
+    db = SessionLocal()
+    try:
+        incident_id = _make_incident(db, workspace, monitor, severity="high", minutes_old=1)
+    finally:
+        db.close()
+
+    monkeypatch.setattr(
+        incidents_module, "build_notifier", lambda kind, config: _BrokenNotifier()
+    )
+    failed = escalate_due_incidents()
+    assert len(failed["failed"]) == 1
+
+    db = SessionLocal()
+    try:
+        failure_events = (
+            db.query(IncidentEvent)
+            .filter(
+                IncidentEvent.incident_id == incident_id,
+                IncidentEvent.type == "escalation_failed",
+            )
+            .count()
+        )
+    finally:
+        db.close()
+    assert failure_events == 1
+
+    sent: list = []
+    monkeypatch.setattr(
+        incidents_module, "build_notifier", lambda kind, config: _RecordingNotifier(sent)
+    )
+    retried = escalate_due_incidents()
+    assert len(retried["escalated"]) == 1
+    assert len(sent) == 1
+    assert "rg_escalations_total{status=\"failed\"}" in render_metrics()

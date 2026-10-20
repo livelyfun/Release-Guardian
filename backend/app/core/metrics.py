@@ -252,3 +252,10 @@ OLDEST_PENDING_RUN_AGE = _register(
         "Age in seconds of the oldest pending run (0 when the queue is empty).",
     )
 )
+ESCALATIONS = _register(
+    Counter(
+        "rg_escalations_total",
+        "Incident escalation attempts by delivery status.",
+        ("status",),
+    )
+)

@@ -15,10 +15,10 @@ class EscalationRule(IdMixin, TimestampMixin, Base):
         ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
     )
     name: Mapped[str] = mapped_column(String(120))
-    severity: Mapped[str] = mapped_column(String(20), default="medium")  # critical, high, medium, low
-    minutes_to_escalate: Mapped[int] = mapped_column(Integer, default=30)  # minutes before next escalation
+    severity: Mapped[str] = mapped_column(String(20), default="high")  # critical, high, medium, low
+    minutes_to_escalate: Mapped[int] = mapped_column(Integer, default=30)  # minutes after an incident opens
     channel_kind: Mapped[str] = mapped_column(String(30), default="webhook")  # webhook, email
-    channel_config_key: Mapped[str | None] = mapped_column(String(100), nullable=True)  # config key e.g. "webhook_url"
+    channel_config: Mapped[dict] = mapped_column(JSON, default=dict)
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 
 

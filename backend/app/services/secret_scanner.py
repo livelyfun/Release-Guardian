@@ -38,6 +38,12 @@ class SecretScanResult:
         self.severity = severity  # low, medium, high, critical
 
 
+_SENSITIVE_KEY_RE = re.compile(
+    r"(secret|token|password|passwd|api[_-]?key|access[_-]?key|private[_-]?key|dsn)",
+    re.IGNORECASE,
+)
+
+
 # (pattern, secret_type, description)
 _SECRET_PATTERNS: list[tuple[str, str, str]] = [
     (r"rg_[a-zA-Z0-9]{20,}", "api_key", "RG API key (rg_ prefix)"),
@@ -75,6 +81,11 @@ def _scan_values(values: dict[str, Any], prefix: str) -> list[SecretScanResult]:
         if not isinstance(value, str) or not value:
             continue
         for pattern, secret_type, _description in _SECRET_PATTERNS:
+            # Generic high-entropy patterns need a secret-shaped key name to
+            # avoid flagging infrastructure IDs such as INVOCATION_ID or
+            # SHELL_SESSION_ID (both are 32-char hex).
+            if secret_type in {"api_token", "password"} and not _SENSITIVE_KEY_RE.search(key):
+                continue
             if re.search(pattern, value, re.IGNORECASE):
                 findings.append(
                     SecretScanResult(

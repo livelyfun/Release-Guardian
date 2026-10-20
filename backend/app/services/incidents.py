@@ -1,9 +1,19 @@
+from datetime import UTC, datetime
+
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
+from app.core.database import SessionLocal
+from app.core.metrics import ESCALATIONS
 from app.models.base import utcnow
 from app.models.execution import EscalationRule, Run
 from app.models.project import Environment, Monitor, Project
 from app.models.release import Incident, IncidentEvent
+from app.services.notifications import Notification, build_notifier
+
+
+def _as_utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value
 
 
 def resolve_open_incidents(db: Session, dedupe_key: str) -> list[Incident]:
@@ -19,67 +29,115 @@ def resolve_open_incidents(db: Session, dedupe_key: str) -> list[Incident]:
     return open_incidents
 
 
-def _escalate_incident(db: Session, incident: Incident) -> Incident | None:
-    """Move an incident to its next escalation level based on rules and time elapsed."""
-    rule = (
-        db.query(EscalationRule)
-        .filter(EscalationRule.workspace_id == incident.workspace_id, EscalationRule.severity == incident.severity, EscalationRule.is_enabled.is_(True))
-        .order_by(EscalationRule.minutes_to_escalate.asc())
-        .first()
-    )
-    if rule is None:
-        return None
+def escalate_due_incidents(db: Session | None = None) -> dict:
+    """Fire every escalation rule whose threshold has elapsed.
 
-    # Check if enough time has elapsed since the last escalation
-    last_escalation = (
-        db.query(IncidentEvent)
-        .filter(IncidentEvent.incident_id == incident.id, IncidentEvent.type == "escalated")
-        .order_by(IncidentEvent.created_at.desc())
-        .first()
-    )
+    Rules form a ladder: each rule fires at most once per incident.  Failed
+    deliveries are recorded as ``escalation_failed`` events and retried on the
+    next sweep; successful rules are never re-sent.  Resolved incidents are
+    ignored, so recovery stops paging.
+    """
+    owned = db is None
+    session = db or SessionLocal()
+    escalated: list[str] = []
+    failed: list[str] = []
 
-    if last_escalation:
-        elapsed_minutes = (utcnow() - last_escalation.created_at).total_seconds() / 60
-        if elapsed_minutes < rule.minutes_to_escalate:
-            return incident  # Not yet time for next escalation
-
-    # Create escalation event
-    db.add(
-        IncidentEvent(
-            incident_id=incident.id,
-            type="escalated",
-            message=f"Escalated to {rule.channel_kind} (configured after {rule.minutes_to_escalate} minutes)",
-            meta={"escalation_rule_id": rule.id, "minutes_to_escalate": rule.minutes_to_escalate},
-        )
-    )
-
-    # Dispatch notification via the configured channel
     try:
-        if rule.channel_kind == "webhook":
-            from app.services.notifications.webhook import WebhookNotifier
-            url = rule.channel_config_key or ""
-            if url:
-                notifier = WebhookNotifier(url)
-                notifier.send(
-                    subject=f"[{incident.severity.upper()}] Escalated incident: {incident.title}",
-                    body=f"Incident has been escalated: {incident.title}\n\nReason: {incident.dedupe_key}\n\nIncident ID: {incident.id}",
-                    severity=incident.severity,
+        now = utcnow()
+        incidents = (
+            session.query(Incident)
+            .filter(Incident.status.in_(["open", "acknowledged"]))
+            .order_by(Incident.opened_at)
+            .limit(settings.escalation_sweep_batch)
+            .all()
+        )
+        for incident in incidents:
+            rules = (
+                session.query(EscalationRule)
+                .filter(
+                    EscalationRule.workspace_id == incident.workspace_id,
+                    EscalationRule.severity == incident.severity,
+                    EscalationRule.is_enabled.is_(True),
                 )
-        elif rule.channel_kind == "email":
-            from app.services.notifications.email import EmailNotifier
-            to = rule.channel_config_key or ""
-            if to:
-                notifier = EmailNotifier(config={"to": to})
-                notifier.send(
-                    subject=f"[{incident.severity.upper()}] Escalated incident: {incident.title}",
-                    body=f"Incident has been escalated: {incident.title}\n\nReason: {incident.dedupe_key}\n\nIncident ID: {incident.id}",
-                    severity=incident.severity,
-                )
-    except Exception as exc:  # noqa: BLE001 - non-fatal if escalation fails
-        incident.escalation_error = str(exc)[:200]
+                .order_by(EscalationRule.minutes_to_escalate)
+                .all()
+            )
+            if not rules:
+                continue
 
-    db.commit()
-    return incident
+            fired = {
+                (event.meta or {}).get("escalation_rule_id")
+                for event in session.query(IncidentEvent)
+                .filter(
+                    IncidentEvent.incident_id == incident.id,
+                    IncidentEvent.type == "escalated",
+                )
+                .all()
+            }
+            opened_at = _as_utc(incident.opened_at)
+            elapsed_minutes = (now - opened_at).total_seconds() / 60
+
+            for rule in rules:
+                if rule.id in fired or elapsed_minutes < rule.minutes_to_escalate:
+                    continue
+
+                subject = f"[{incident.severity.upper()}] Escalated incident: {incident.title}"
+                body = (
+                    f"Incident escalated after {rule.minutes_to_escalate} minutes.\n\n"
+                    f"Incident: {incident.title}\n"
+                    f"Key: {incident.dedupe_key}\n"
+                    f"Rule: {rule.name} ({rule.channel_kind})\n"
+                    f"Incident ID: {incident.id}"
+                )
+                error: str | None = None
+                try:
+                    notifier = build_notifier(rule.channel_kind, rule.channel_config)
+                    notifier.send(
+                        Notification(
+                            subject=subject, body=body, severity=incident.severity
+                        )
+                    )
+                except Exception as exc:  # noqa: BLE001 - one channel must not stop the ladder
+                    error = str(exc)[:500]
+                    failed.append(rule.id)
+                    ESCALATIONS.inc(status="failed")
+                    session.add(
+                        IncidentEvent(
+                            incident_id=incident.id,
+                            type="escalation_failed",
+                            message=f"Escalation to {rule.channel_kind} failed: {error}",
+                            meta={
+                                "escalation_rule_id": rule.id,
+                                "channel_kind": rule.channel_kind,
+                            },
+                        )
+                    )
+                    continue
+
+                ESCALATIONS.inc(status="sent")
+                escalated.append(rule.id)
+                session.add(
+                    IncidentEvent(
+                        incident_id=incident.id,
+                        type="escalated",
+                        message=(
+                            f"Escalated via {rule.channel_kind} after "
+                            f"{rule.minutes_to_escalate} minutes ({rule.name})"
+                        ),
+                        meta={
+                            "escalation_rule_id": rule.id,
+                            "channel_kind": rule.channel_kind,
+                            "minutes_to_escalate": rule.minutes_to_escalate,
+                        },
+                    )
+                )
+
+        session.commit()
+    finally:
+        if owned:
+            session.close()
+
+    return {"escalated": escalated, "failed": failed}
 
 
 def _open_or_refresh(

@@ -36,6 +36,10 @@ celery_app.conf.update(
             "task": "release_guardian.sweep_stale_runs",
             "schedule": 60.0,
         },
+        "escalate-incidents": {
+            "task": "release_guardian.escalate_incidents",
+            "schedule": 60.0,
+        },
     },
 )
 
@@ -59,3 +63,10 @@ def sweep_stale_runs_task() -> dict:
     from app.workers.tasks.maintenance import sweep_stale_runs
 
     return sweep_stale_runs()
+
+
+@celery_app.task(name="release_guardian.escalate_incidents")
+def escalate_incidents_task() -> dict:
+    from app.services.incidents import escalate_due_incidents
+
+    return escalate_due_incidents()

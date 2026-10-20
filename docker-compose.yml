@@ -42,6 +42,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     command: >
       sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
@@ -61,6 +65,15 @@ services:
         condition: service_healthy
     # Let Celery finish in-flight tasks after SIGTERM (acks_late is enabled).
     stop_grace_period: 35s
+    init: true
+    pids_limit: 512
+    shm_size: 1gb
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=512m
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=info
 
   scheduler:
@@ -75,6 +88,10 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     command: celery -A app.workers.celery_app.celery_app beat --loglevel=info
 
 volumes:

@@ -14,13 +14,13 @@ Each phase lists its exit criteria; a phase is complete only when the criteria a
 | A — Discovery and decisions | Requirements, architecture, deployment, risk | Complete (docs 00–13) |
 | B — Engineering foundation | Repo layout, tooling, local containers, CI, logging, tests | Complete |
 | C — Identity and workspace model | Auth, workspaces, memberships, projects, environments, audit | Complete |
-| D — Durable execution platform | Jobs, queue, scheduler, retries, execution tracking | Complete (retry/dead-letter hardening pending) |
-| E — Monitoring and audit engine | HTTP checks, browser/Lighthouse execution, evidence | Partial (HTTP + asset retrieval; full Playwright pending) |
-| F — Release verification | Deployment events, triggered suites, baselines, regression | Partial (events, triggered runs, latency baseline) |
-| G — Incident management | Alert rules, lifecycle, notifications, escalation | Partial (lifecycle, webhook/email adapters) |
-| H — Complete product experience | Dashboards, test builder, reports, API/CLI | Partial (read-oriented dashboard, REST API) |
-| I — Advanced capabilities | AI assistance, analytics, billing, regions | Not started |
-| J — Production readiness | Security validation, load/resilience, DR, runbooks | Not started |
+| D — Durable execution platform | Jobs, queue, scheduler, retries, execution tracking | Complete (retries via sweeper; no quarantined DLQ) |
+| E — Monitoring and audit engine | HTTP checks, browser/Lighthouse execution, evidence | Partial (HTTP, Playwright, Lighthouse, artifacts; traces/HAR not captured) |
+| F — Release verification | Deployment events, triggered suites, baselines, regression | Partial (events, triggered runs, baselines; CI status checks/suppressions pending) |
+| G — Incident management | Alert rules, lifecycle, notifications, escalation | Partial (lifecycle, webhook/email adapters, escalation ladder + API; maintenance windows/email transport pending) |
+| H — Complete product experience | Dashboards, test builder, reports, API/CLI | Partial (read-oriented dashboard, REST API, API keys; test builder/exports/CLI pending) |
+| I — Advanced capabilities | AI assistance, analytics, billing, regions | Structural only (`AIConfiguration`; features not built) |
+| J — Production readiness | Security validation, load/resilience, DR, runbooks | In progress (deliverables built; staging SLO + drill sign-off pending) |
 
 ## Milestones and Exit Criteria
 
@@ -40,29 +40,59 @@ Each phase lists its exit criteria; a phase is complete only when the criteria a
 - Runs, step results, inline and Celery execution, manual trigger, scheduled due-check task.
 - Exit criteria: run lifecycle persisted; duplicate scheduling prevented for active runs.
 
-### M4 — Monitoring engine (in progress)
+### M4 — Monitoring engine (partial)
 - HTTP availability, status/content assertions, redirect validation, SSRF guard.
-- Remaining: full Playwright browser execution, Lighthouse audit integration, artifact storage.
-- Exit criteria: browser journey runs in isolated worker with screenshots/traces retained.
+- Playwright browser journeys with route-level SSRF checks, console/network
+  evidence, and a final screenshot artifact.
+- Lighthouse audits with category scores, thresholds, and an optional JSON
+  report artifact.
+- Remaining: Playwright traces/HAR capture, step-level screenshots, artifact
+  redaction.
+- Exit criteria: a browser journey runs in the worker and retains a screenshot;
+  Lighthouse retains scores/report. Met locally; staging evidence pending.
 
-### M5 — Release verification (in progress)
-- Deployment ingestion, deployment-triggered runs, latency baseline and regression detection.
-- Remaining: previous-known-good comparison, CI status checks, regression suppressions.
-- Exit criteria: a deployment can be marked passed/failed/inconclusive from suite results.
+### M5 — Release verification (partial)
+- Deployment ingestion, deployment-triggered runs, latency baseline and
+  regression detection, deployment status derivation.
+- Remaining: previous-known-good comparison, CI status checks, regression
+  suppressions.
+- Exit criteria: a deployment can be marked passed/failed/inconclusive from
+  suite results. Met.
 
-### M6 — Incidents and notifications (in progress)
-- Incident dedupe key, open/acknowledge/resolve, recurrence events, webhook delivery attempts.
-- Remaining: escalation policies, maintenance windows, retry/backoff, more channels.
-- Exit criteria: duplicate failures produce one incident and one notification per transition.
+### M6 — Incidents and notifications (partial)
+- Incident dedupe key, open/acknowledge/resolve, recurrence events, webhook
+  delivery attempts, HMAC-signed outgoing webhooks.
+- Escalation ladder: rules per workspace/severity, ordered by elapsed minutes,
+  fired at most once per incident, retried on delivery failure, CRUD API, and a
+  scheduler sweep.
+- Remaining: maintenance windows, notification retry/backoff for initial
+  notifications, real email transport, more channels.
+- Exit criteria: duplicate failures produce one incident and one notification
+  per transition. Met for webhooks.
 
-### M7 — Product experience and platform API (in progress)
-- Next.js dashboard for workspaces, projects, monitors, runs, deployments, incidents, keys, audit.
-- Remaining: test builder, exports, team management UI, API-key authentication for the public API.
+### M7 — Product experience and platform API (partial)
+- Next.js dashboard for workspaces, projects, monitors, runs, deployments,
+  incidents, keys, audit, usage, and artifact links.
+- API-key authentication and workspace role gates.
+- Remaining: visual test builder, exports, team management UI, CLI.
 - Exit criteria: a new user completes the core workflow without API calls.
+  Met for the read/trigger workflow; authoring a browser journey still needs
+  JSON config.
 
-### M8 — Production readiness (not started)
-- Load/resilience tests, backup restore drill, security review, runbooks, cost validation.
-- Exit criteria: documented SLOs met in staging; restore and rollback drills pass.
+### M8 — Production readiness (in progress)
+- Structured JSON logs with request IDs; `/health`, `/ready`, `/metrics`
+  (optional bearer token).
+- SLOs, alert rules, error budgets, 14 runbooks.
+- Load test, fixture target, worker-restart drill, backup/restore drill,
+  rollback procedure.
+- Admission control, Redis rate limiting, scheduler/run locks, stale-run
+  sweeper, Celery time limits, Redis AOF, container hardening.
+- Security self-review with residual-risk register and go-live checklist.
+- Cost model and validation checklist.
+- Remaining: run load/restore/rollback drills in staging and record evidence;
+  external penetration test; egress firewall verification.
+- Exit criteria: documented SLOs met in staging; restore and rollback drills
+  pass. **Not yet met — see `docs/operations/PRODUCTION-CHECKLIST.md`.**
 
 ## Dependencies
 

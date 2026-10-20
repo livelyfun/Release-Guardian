@@ -13,6 +13,10 @@ COPY alembic.ini ./
 COPY alembic ./alembic
 COPY app ./app
 
+# Run the control plane as an unprivileged user.
+RUN useradd --create-home --uid 10001 guardian
+USER guardian
+
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

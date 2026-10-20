@@ -106,6 +106,34 @@ class IncidentEventOut(ORMModel):
     created_at: datetime
 
 
+class EscalationRuleCreate(_ChannelConfig):
+    name: str = Field(min_length=1, max_length=120)
+    severity: Severity = "high"
+    minutes_to_escalate: int = Field(default=30, ge=0, le=10080)
+    enabled: bool = True
+
+
+class EscalationRuleUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    severity: Severity | None = None
+    minutes_to_escalate: int | None = Field(default=None, ge=0, le=10080)
+    kind: ChannelKind | None = None
+    config: dict | None = None
+    enabled: bool | None = None
+
+
+class EscalationRuleOut(ORMModel):
+    id: str
+    workspace_id: str
+    name: str
+    severity: Severity
+    minutes_to_escalate: int
+    channel_kind: str
+    channel_config: dict
+    is_enabled: bool
+    created_at: datetime
+
+
 class UsageRecordOut(ORMModel):
     id: str
     workspace_id: str

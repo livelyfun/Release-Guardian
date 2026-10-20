@@ -1,4 +1,4 @@
-.PHONY: help install install-backend install-frontend up down migrate revision dev-api dev-worker dev-scheduler dev-web test lint format check
+.PHONY: help install install-backend install-frontend up down migrate revision dev-api dev-worker dev-scheduler dev-web test lint format check load-test drill-backup drill-resilience security-scan cost-model
 
 PYTHON ?= python3
 PIP ?= $(PYTHON) -m pip
@@ -16,6 +16,11 @@ help:
 	@echo "  test              Run backend tests"
 	@echo "  lint / format     Lint / format backend"
 	@echo "  check             Lint, test, and build frontend"
+	@echo "  load-test         Run the local load test (API on :8010 required)"
+	@echo "  drill-backup      Run the Postgres backup/restore drill"
+	@echo "  drill-resilience  Stop/start the worker during a queued run"
+	@echo "  security-scan     Scan environment/config for exposed secrets"
+	@echo "  cost-model        Print the illustrative monthly cost model"
 
 install: install-backend install-frontend
 
@@ -61,3 +66,18 @@ format:
 
 check: lint test
 	cd frontend && npm run build
+
+load-test:
+	$(PYTHON) scripts/load_test.py --start-fixture
+
+drill-backup:
+	scripts/backup_restore_drill.sh
+
+drill-resilience:
+	$(PYTHON) scripts/resilience_drill.py
+
+security-scan:
+	cd backend && .venv/bin/python -m app.services.secret_scanner
+
+cost-model:
+	$(PYTHON) scripts/cost_model.py

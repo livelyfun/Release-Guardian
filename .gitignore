@@ -35,6 +35,10 @@ test-results/
 playwright-report/
 blob-report/
 
+# Backups and load-test output
+backups/
+loadtest-results.json
+
 # OS / editor
 .DS_Store
 .idea/

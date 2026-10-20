@@ -116,9 +116,14 @@ def create_app() -> FastAPI:
         )
 
     @app.get("/metrics", tags=["meta"], include_in_schema=False)
-    def metrics() -> PlainTextResponse:
+    def metrics(request: Request) -> PlainTextResponse:
         if not settings.metrics_enabled:
             return PlainTextResponse("metrics disabled\n", status_code=404)
+        if settings.metrics_token:
+            expected = f"Bearer {settings.metrics_token}"
+            if request.headers.get("Authorization") != expected:
+                # Hide the endpoint entirely rather than advertising it.
+                return PlainTextResponse("not found\n", status_code=404)
         return PlainTextResponse(render_metrics(), media_type="text/plain; version=0.0.4")
 
     return app
