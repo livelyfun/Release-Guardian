@@ -17,6 +17,12 @@ if settings.database_url.startswith("sqlite"):
     connect_args = {"check_same_thread": False}
     if ":memory:" in settings.database_url or settings.database_url in {"sqlite://", "sqlite:///:memory:"}:
         engine_kwargs["poolclass"] = StaticPool
+else:
+    engine_kwargs.update(
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
+        pool_recycle=settings.db_pool_recycle_seconds,
+    )
 
 engine = create_engine(
     settings.database_url, connect_args=connect_args, pool_pre_ping=True, **engine_kwargs

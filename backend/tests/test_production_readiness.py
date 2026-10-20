@@ -9,6 +9,7 @@ import app.api.v1.endpoints.runs as runs_endpoint
 import app.main as main_module
 import app.services.checks as checks_module
 import app.services.incidents as incidents_module
+import app.workers.dispatch as dispatch_module
 import app.workers.tasks.checks as worker_checks
 from app.core.config import Settings, settings
 from app.core.database import SessionLocal
@@ -484,6 +485,42 @@ def test_manual_trigger_rejects_duplicate_active_run(client, monkeypatch):
     second = client.post(f"/api/v1/monitors/{monitor['id']}/runs", headers=headers, json={})
     assert second.status_code == 409
     assert "active run" in second.json()["error"]["message"]
+
+
+def test_dispatches_heavy_checks_to_isolated_queues(client, monkeypatch):
+    from app.workers.celery_app import celery_app
+
+    headers, _workspace, http_monitor = _setup_monitor(client, name="HTTP")
+    browser_monitor = client.post(
+        f"/api/v1/environments/{http_monitor['environment_id']}/monitors",
+        headers=headers,
+        json={
+            "name": "Browser",
+            "kind": "browser",
+            "target_url": "https://example.com",
+            "config": {"steps": [{"action": "goto", "url": "/"}]},
+        },
+    ).json()
+
+    monkeypatch.setattr(runs_endpoint, "dispatch_run", lambda run_id: None)
+    http_run = client.post(
+        f"/api/v1/monitors/{http_monitor['id']}/runs", headers=headers, json={}
+    ).json()
+    browser_run = client.post(
+        f"/api/v1/monitors/{browser_monitor['id']}/runs", headers=headers, json={}
+    ).json()
+
+    calls = []
+    monkeypatch.setattr(
+        celery_app,
+        "send_task",
+        lambda name, args=None, queue=None: calls.append(queue),
+    )
+    monkeypatch.setattr(settings, "worker_mode", "celery")
+
+    dispatch_module.dispatch_run(http_run["id"])
+    dispatch_module.dispatch_run(browser_run["id"])
+    assert calls == ["celery", "browser"]
 
 
 def test_manual_trigger_enforces_workspace_capacity(client, monkeypatch):

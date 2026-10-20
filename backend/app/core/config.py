@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     api_prefix: str = "/api/v1"
 
     database_url: str = "sqlite:///./release_guardian.db"
+    db_pool_size: int = Field(default=10, ge=1, le=200)
+    db_max_overflow: int = Field(default=20, ge=0, le=200)
+    db_pool_recycle_seconds: int = Field(default=1800, ge=60, le=86400)
     redis_url: str = "redis://localhost:6379/0"
 
     jwt_secret: str = "change-me-in-production"

@@ -92,6 +92,35 @@ services:
       - /tmp:size=512m
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=info
 
+  browser-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://release_guardian:release_guardian@postgres:5432/release_guardian
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Browser journeys can exceed a Celery time limit; acks_late re-dispatches.
+    stop_grace_period: 60s
+    init: true
+    pids_limit: 1024
+    shm_size: 1gb
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=1g
+    command: >
+      celery -A app.workers.celery_app.celery_app worker
+      -Q browser,lighthouse --concurrency=2 --loglevel=info
+
   scheduler:
     build:
       context: ./backend
