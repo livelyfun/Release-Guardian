@@ -8,7 +8,7 @@ from app.services.browser import perform_browser_check
 from app.services.outcomes import CheckOutcome, StepOutcome
 from app.services.url_guard import validate_url
 
-__all__ = ["CheckOutcome", "StepOutcome", "perform_check", "perform_http_check"]
+__all__ = ["CheckOutcome", "StepOutcome", "perform_check", "perform_http_check", "perform_lighthouse_check"]
 
 
 def _fetch_with_redirects(url: str) -> tuple[httpx.Response, list[str]]:
@@ -96,8 +96,123 @@ def perform_http_check(monitor) -> CheckOutcome:
     return CheckOutcome(status=overall, duration_ms=duration_ms, steps=steps, summary=summary)
 
 
+def perform_lighthouse_check(monitor) -> CheckOutcome:
+    """Run Lighthouse audit and return a CheckOutcome with scores/artifacts."""
+    import subprocess
+    import json
+    import os
+    import tempfile
+
+    config = monitor.config or {}
+    flags = config.get("flags", "")
+
+    started = time.perf_counter()
+    steps: list[StepOutcome] = []
+    summary: dict = {}
+
+    # Build lighthouse command
+    url = monitor.target_url
+    # Ensure URL has a scheme
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+
+    # Output to a temp file for JSON parsing
+    with tempfile.NamedTemporaryFile(suffix=".json", mode="w", delete=False) as tmp:
+        tmp_path = tmp.name
+
+    try:
+        # Run Lighthouse via CLI
+        cmd = [
+            "lighthouse",
+            url,
+            "--output=json",
+            "--output-path=" + tmp_path,
+            "--no-emulate-user-agent-permissions",
+            "--disable-device-emulation",
+            *(["--form-factor=desktop"] if config.get("form_factor") != "mobile" else []),
+        ]
+        if flags:
+            cmd.extend(flags.split())
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=settings.step_timeout_seconds * 60)
+        if result.returncode != 0:
+            raise RuntimeError(f"Lighthouse failed: {result.stderr}")
+
+        # Parse the JSON output
+        with open(tmp_path, "r") as f:
+            lh_data = json.load(f)
+
+        elapsed_ms = int((time.perf_counter() - started) * 1000)
+
+        # Extract key metrics
+        lhr = lh_data.get("lhr", {})
+        audits = lhr.get("audits", {}) or {}
+        categories = lh_data.get("categories", {})
+
+        # Store summary scores
+        summary["performance_score"] = categories.get("performance", {}).get("score", 0) * 100
+        summary["accessibility_score"] = categories.get("accessibility", {}).get("score", 0) * 100
+        summary["best_practices_score"] = categories.get("best-practices", {}).get("score", 0) * 100
+        summary["seo_score"] = categories.get("seo", {}).get("score", 0) * 100
+        summary["first_contentful_paint"] = lhr.metrics.get("first-contentful-paint", {}).numericValue
+        summary["largest_contentful_paint"] = lhr.metrics.get("largest-contentful-paint", {}).numericValue
+        summary["total_blocking_time"] = lhr.metrics.get("total-blocking-time", {}).numericValue
+
+        # Create steps for key audits
+        for audit_key, audit_data in audits.items():
+            title = audit_data.get("title", audit_key)
+            score = audit_data.get("score", None)
+            numeric_value = audit_data.get("numericValue", None)
+            error = audit_data.get("errorMessage", None)
+
+            status = "passed" if score is not None and score >= 0.9 else "failed" if score is not None else "inconclusive"
+            steps.append(
+                StepOutcome(
+                    name=title,
+                    status=status,
+                    duration_ms=elapsed_ms,
+                    error=str(error)[:500] if error else None,
+                    evidence={
+                        "score": score,
+                        "numeric_value": numeric_value,
+                        "raw": audit_data,
+                    },
+                )
+            )
+
+        # Store artifact references if save-assets was requested
+        # (Lighthouse can save trace/screenshot assets to disk)
+        if config.get("save_assets"):
+            # TODO: copy artifacts to S3 storage
+            summary["assets_saved"] = True
+
+    except Exception as exc:  # noqa: BLE001 - surface failure as step, not a crash
+        elapsed_ms = int((time.perf_counter() - started) * 1000)
+        steps.append(
+            StepOutcome(
+                name="Lighthouse audit",
+                status="failed",
+                duration_ms=elapsed_ms,
+                error=str(exc)[:2000],
+            )
+        )
+        summary["error"] = str(exc)[:500]
+    finally:
+        # Clean up temp file
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+    overall = "passed" if steps and all(step.status == "passed" for step in steps) else "failed"
+    duration_ms = int((time.perf_counter() - started) * 1000)
+    return CheckOutcome(status=overall, duration_ms=duration_ms, steps=steps, summary=summary)
+
+
 def perform_check(monitor) -> CheckOutcome:
     config = monitor.config or {}
     if monitor.kind == "browser" and config.get("steps"):
         return perform_browser_check(monitor)
+    if monitor.kind == "lighthouse":
+        return perform_lighthouse_check(monitor)
     return perform_http_check(monitor)
