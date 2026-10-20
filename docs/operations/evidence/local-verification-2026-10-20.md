@@ -1,6 +1,6 @@
 # Local Verification — 2026-10-20
 
-**Revision:** `b642eba` (backend, worker, frontend, migrations)
+**Revision:** `5ab0787` (backend, worker, frontend, migrations)
 **Environment:** Developer workstation, Python 3.12, Node 20+, SQLite,
 `WORKER_MODE=inline`. Docker daemon was unavailable, so no Postgres/Redis
 containers were started.
@@ -14,7 +14,7 @@ evidence and does not satisfy the M8 sign-off gates in
 | Command | Result |
 |---|---|
 | `backend/.venv/bin/ruff check app tests` | Pass |
-| `backend/.venv/bin/pytest -q` | **83 passed**, 1 deprecation warning |
+| `backend/.venv/bin/pytest -q` | **85 passed**, 1 deprecation warning |
 | `backend/.venv/bin/ruff check scripts --config backend/pyproject.toml` | Pass |
 | `bash -n scripts/backup_restore_drill.sh` | Pass |
 | `cd frontend && npm run lint` | Pass, no warnings |
