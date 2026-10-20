@@ -1,10 +1,9 @@
 from sqlalchemy.orm import Session
 
 from app.models.base import utcnow
-from app.models.execution import Run, EscalationRule
+from app.models.execution import EscalationRule, Run
 from app.models.project import Environment, Monitor, Project
 from app.models.release import Incident, IncidentEvent
-from app.services.notifications import dispatch as notification_dispatch
 
 
 def resolve_open_incidents(db: Session, dedupe_key: str) -> list[Incident]:

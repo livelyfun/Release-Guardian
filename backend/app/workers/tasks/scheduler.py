@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
+from app.core.metrics import SCHEDULER_ENQUEUED
 from app.models.base import utcnow
 from app.models.execution import Run
 from app.models.project import Monitor
@@ -57,4 +58,6 @@ def enqueue_due_monitors(db: Session | None = None) -> dict:
     for run_id in created:
         dispatch_run(run_id)
 
+    if created:
+        SCHEDULER_ENQUEUED.inc(len(created))
     return {"queued": len(created), "run_ids": created}

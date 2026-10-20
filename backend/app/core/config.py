@@ -27,10 +27,17 @@ class Settings(BaseSettings):
     rate_limit_auth_per_minute: int = 20
     rate_limit_api_per_minute: int = 300
 
+    log_level: str = "INFO"
+    metrics_enabled: bool = True
+    readiness_check_redis: bool = True
+
     s3_endpoint_url: str | None = None
     s3_bucket: str = "release-guardian"
     s3_access_key: str | None = None
     s3_secret_key: str | None = None
+    s3_region: str = "us-east-1"
+    s3_use_ssl: bool = True
+    s3_force_path_style: bool = False
 
     cors_origins: list[str] = ["http://localhost:3000"]
 

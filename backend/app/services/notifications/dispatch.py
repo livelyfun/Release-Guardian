@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 
+from app.core.metrics import NOTIFICATION_ATTEMPTS
 from app.models.release import Incident, NotificationAttempt, NotificationChannel
 from app.services.notifications import Notification, build_notifier
 
@@ -31,6 +32,7 @@ def _send(db: Session, incident: Incident, subject: str, body: str) -> None:
         except Exception as exc:  # noqa: BLE001 - a failed channel must not break execution
             attempt.status = "failed"
             attempt.error = str(exc)[:1000]
+        NOTIFICATION_ATTEMPTS.inc(channel=channel.kind, status=attempt.status)
     db.commit()
 
 

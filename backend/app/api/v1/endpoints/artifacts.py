@@ -3,8 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.api.v1.deps import Principal, get_principal, require_role
 from app.core.database import get_db
-from app.models.project import Project
-from app.services.storage import get_signed_url, StorageError
+from app.services.storage import StorageError, get_signed_url
 
 router = APIRouter(tags=["artifacts"])
 

@@ -18,13 +18,13 @@ def test_perform_check_routes_browser_monitors(monkeypatch):
     monkeypatch.setattr(
         checks_module,
         "perform_browser_check",
-        lambda monitor: calls.append("browser")
+        lambda monitor, run_id=None: calls.append("browser")
         or CheckOutcome(status="passed", duration_ms=1, steps=[], summary={}),
     )
     monkeypatch.setattr(
         checks_module,
         "perform_http_check",
-        lambda monitor: calls.append("http")
+        lambda monitor, run_id=None: calls.append("http")
         or CheckOutcome(status="passed", duration_ms=1, steps=[], summary={}),
     )
 

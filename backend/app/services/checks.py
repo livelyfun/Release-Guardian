@@ -6,6 +6,7 @@ import httpx
 from app.core.config import settings
 from app.services.browser import perform_browser_check
 from app.services.outcomes import CheckOutcome, StepOutcome
+from app.services.storage import upload_bytes
 from app.services.url_guard import validate_url
 
 __all__ = ["CheckOutcome", "StepOutcome", "perform_check", "perform_http_check", "perform_lighthouse_check"]
@@ -96,11 +97,23 @@ def perform_http_check(monitor) -> CheckOutcome:
     return CheckOutcome(status=overall, duration_ms=duration_ms, steps=steps, summary=summary)
 
 
-def perform_lighthouse_check(monitor) -> CheckOutcome:
-    """Run Lighthouse audit and return a CheckOutcome with scores/artifacts."""
-    import subprocess
+def _failure(name: str, error: str, started: float) -> CheckOutcome:
+    duration_ms = int((time.perf_counter() - started) * 1000)
+    return CheckOutcome(
+        status="failed",
+        duration_ms=duration_ms,
+        steps=[
+            StepOutcome(name=name, status="failed", duration_ms=duration_ms, error=error[:2000])
+        ],
+        summary={"error": error[:500]},
+    )
+
+
+def perform_lighthouse_check(monitor, run_id: str | None = None) -> CheckOutcome:
+    """Run a Lighthouse audit and return scores plus an optional report artifact."""
     import json
     import os
+    import subprocess
     import tempfile
 
     config = monitor.config or {}
@@ -110,83 +123,114 @@ def perform_lighthouse_check(monitor) -> CheckOutcome:
     steps: list[StepOutcome] = []
     summary: dict = {}
 
-    # Build lighthouse command
     url = monitor.target_url
-    # Ensure URL has a scheme
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
 
-    # Output to a temp file for JSON parsing
+    try:
+        validate_url(url, settings.allow_private_urls)
+    except Exception as exc:  # noqa: BLE001 - never launch a browser at a blocked target
+        return _failure("Target validation", str(exc), started)
+
     with tempfile.NamedTemporaryFile(suffix=".json", mode="w", delete=False) as tmp:
         tmp_path = tmp.name
 
     try:
-        # Run Lighthouse via CLI
         cmd = [
             "lighthouse",
             url,
+            "--quiet",
             "--output=json",
             "--output-path=" + tmp_path,
-            "--no-emulate-user-agent-permissions",
-            "--disable-device-emulation",
-            *(["--form-factor=desktop"] if config.get("form_factor") != "mobile" else []),
+            "--chrome-flags=--headless --no-sandbox --disable-dev-shm-usage",
         ]
+        if config.get("form_factor") != "mobile":
+            cmd.append("--preset=desktop")
         if flags:
             cmd.extend(flags.split())
 
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=settings.step_timeout_seconds * 60)
+        timeout_seconds = int(
+            config.get("timeout_seconds") or max(60, settings.step_timeout_seconds * 2)
+        )
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=timeout_seconds, check=False
+        )
         if result.returncode != 0:
-            raise RuntimeError(f"Lighthouse failed: {result.stderr}")
+            raise RuntimeError(f"Lighthouse exited {result.returncode}: {result.stderr[:1000]}")
 
-        # Parse the JSON output
-        with open(tmp_path, "r") as f:
-            lh_data = json.load(f)
+        with open(tmp_path, encoding="utf-8") as report_file:
+            report = json.load(report_file)
+
+        runtime_error = report.get("runtimeError")
+        if runtime_error:
+            code = runtime_error.get("code") if isinstance(runtime_error, dict) else None
+            message = runtime_error.get("message") if isinstance(runtime_error, dict) else None
+            raise RuntimeError(f"Lighthouse runtime error {code}: {message}")
 
         elapsed_ms = int((time.perf_counter() - started) * 1000)
+        categories = report.get("categories") or {}
+        audits = report.get("audits") or {}
+        if not categories:
+            raise RuntimeError("Lighthouse report contained no categories")
 
-        # Extract key metrics
-        lhr = lh_data.get("lhr", {})
-        audits = lhr.get("audits", {}) or {}
-        categories = lh_data.get("categories", {})
-
-        # Store summary scores
-        summary["performance_score"] = categories.get("performance", {}).get("score", 0) * 100
-        summary["accessibility_score"] = categories.get("accessibility", {}).get("score", 0) * 100
-        summary["best_practices_score"] = categories.get("best-practices", {}).get("score", 0) * 100
-        summary["seo_score"] = categories.get("seo", {}).get("score", 0) * 100
-        summary["first_contentful_paint"] = lhr.metrics.get("first-contentful-paint", {}).numericValue
-        summary["largest_contentful_paint"] = lhr.metrics.get("largest-contentful-paint", {}).numericValue
-        summary["total_blocking_time"] = lhr.metrics.get("total-blocking-time", {}).numericValue
-
-        # Create steps for key audits
-        for audit_key, audit_data in audits.items():
-            title = audit_data.get("title", audit_key)
-            score = audit_data.get("score", None)
-            numeric_value = audit_data.get("numericValue", None)
-            error = audit_data.get("errorMessage", None)
-
-            status = "passed" if score is not None and score >= 0.9 else "failed" if score is not None else "inconclusive"
+        min_scores = {
+            str(key): float(value) for key, value in (config.get("min_scores") or {}).items()
+        }
+        scores: dict[str, float | None] = {}
+        for key, category in categories.items():
+            raw_score = category.get("score") if isinstance(category, dict) else None
+            score = round(raw_score * 100, 1) if raw_score is not None else None
+            scores[key] = score
+            minimum = min_scores.get(key)
+            if score is None:
+                status = "inconclusive"
+                error = "Lighthouse did not produce a score"
+            elif minimum is not None and score < minimum:
+                status = "failed"
+                error = f"Score {score} below minimum {minimum}"
+            else:
+                status = "passed"
+                error = None
             steps.append(
                 StepOutcome(
-                    name=title,
+                    name=category.get("title", key) if isinstance(category, dict) else key,
                     status=status,
                     duration_ms=elapsed_ms,
-                    error=str(error)[:500] if error else None,
-                    evidence={
-                        "score": score,
-                        "numeric_value": numeric_value,
-                        "raw": audit_data,
-                    },
+                    error=error,
+                    evidence={"score": score, "minimum": minimum},
                 )
             )
 
-        # Store artifact references if save-assets was requested
-        # (Lighthouse can save trace/screenshot assets to disk)
-        if config.get("save_assets"):
-            # TODO: copy artifacts to S3 storage
-            summary["assets_saved"] = True
+        summary["scores"] = scores
+        summary["performance_score"] = scores.get("performance")
+        summary["accessibility_score"] = scores.get("accessibility")
+        summary["best_practices_score"] = scores.get("best-practices")
+        summary["seo_score"] = scores.get("seo")
+        for audit_key, summary_key in (
+            ("first-contentful-paint", "first_contentful_paint"),
+            ("largest-contentful-paint", "largest_contentful_paint"),
+            ("total-blocking-time", "total_blocking_time"),
+            ("cumulative-layout-shift", "cumulative_layout_shift"),
+            ("speed-index", "speed_index"),
+        ):
+            audit = audits.get(audit_key) or {}
+            summary[summary_key] = audit.get("numericValue")
 
-    except Exception as exc:  # noqa: BLE001 - surface failure as step, not a crash
+        if config.get("save_assets"):
+            try:
+                artifact = upload_bytes(
+                    run_id=run_id or monitor.id,
+                    kind="lighthouse",
+                    data=json.dumps(report).encode(),
+                    mime_type="application/json",
+                    extension="json",
+                )
+                summary["report_url"] = artifact["url"]
+                summary["report_key"] = artifact["storage_key"]
+            except Exception as exc:  # noqa: BLE001 - report storage is best-effort
+                summary["report_error"] = str(exc)[:300]
+
+    except Exception as exc:  # noqa: BLE001 - surface failure as a step, not a crash
         elapsed_ms = int((time.perf_counter() - started) * 1000)
         steps.append(
             StepOutcome(
@@ -198,7 +242,6 @@ def perform_lighthouse_check(monitor) -> CheckOutcome:
         )
         summary["error"] = str(exc)[:500]
     finally:
-        # Clean up temp file
         try:
             os.unlink(tmp_path)
         except OSError:
@@ -209,10 +252,9 @@ def perform_lighthouse_check(monitor) -> CheckOutcome:
     return CheckOutcome(status=overall, duration_ms=duration_ms, steps=steps, summary=summary)
 
 
-def perform_check(monitor) -> CheckOutcome:
-    config = monitor.config or {}
-    if monitor.kind == "browser" and config.get("steps"):
-        return perform_browser_check(monitor)
+def perform_check(monitor, run_id: str | None = None) -> CheckOutcome:
+    if monitor.kind == "browser":
+        return perform_browser_check(monitor, run_id=run_id)
     if monitor.kind == "lighthouse":
-        return perform_lighthouse_check(monitor)
+        return perform_lighthouse_check(monitor, run_id=run_id)
     return perform_http_check(monitor)

@@ -1,8 +1,9 @@
 import hashlib
 import time
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 from app.core.config import settings
+from app.core.metrics import BLOCKED_URLS
 from app.services.outcomes import CheckOutcome, StepOutcome
 from app.services.storage import upload_bytes
 from app.services.url_guard import validate_url
@@ -35,7 +36,7 @@ def _failure(name: str, error: str, started: float) -> CheckOutcome:
     )
 
 
-def perform_browser_check(monitor) -> CheckOutcome:
+def perform_browser_check(monitor, run_id: str | None = None) -> CheckOutcome:
     config = monitor.config or {}
     steps = config.get("steps") or []
     started = time.perf_counter()
@@ -54,6 +55,11 @@ def perform_browser_check(monitor) -> CheckOutcome:
             )
 
     try:
+        validate_url(monitor.target_url, settings.allow_private_urls)
+    except Exception as exc:  # noqa: BLE001 - reject disallowed targets before launch
+        return _failure("Target validation", str(exc), started)
+
+    try:
         from playwright.sync_api import sync_playwright
     except Exception as exc:  # noqa: BLE001
         return _failure("Browser launch", f"Playwright unavailable: {exc}", started)
@@ -61,7 +67,23 @@ def perform_browser_check(monitor) -> CheckOutcome:
     outcomes: list[StepOutcome] = []
     console_errors: list[str] = []
     failed_requests: list[str] = []
+    blocked_requests: list[str] = []
     summary: dict = {}
+
+    def guard_route(route) -> None:
+        """Validate every browser request (navigations, XHR, subresources)."""
+        request_url = route.request.url
+        if urlparse(request_url).scheme in {"data", "blob", "about"}:
+            route.continue_()
+            return
+        try:
+            validate_url(request_url, settings.allow_private_urls)
+        except Exception:  # noqa: BLE001 - abort anything that is not a public target
+            blocked_requests.append(request_url)
+            BLOCKED_URLS.inc(reason="browser_request")
+            route.abort()
+            return
+        route.continue_()
 
     try:
         with sync_playwright() as playwright:
@@ -70,6 +92,7 @@ def perform_browser_check(monitor) -> CheckOutcome:
             )
             context = browser.new_context()
             page = context.new_page()
+            page.route("**/*", guard_route)
             page.set_default_timeout(settings.step_timeout_seconds * 1000)
 
             page.on(
@@ -131,7 +154,28 @@ def perform_browser_check(monitor) -> CheckOutcome:
                 "final_url": page.url,
                 "console_errors": console_errors[:20],
                 "failed_requests": failed_requests[:20],
+                "blocked_requests": blocked_requests[:20],
             }
+
+            # Capture the real final page before closing the browser.  Artifact
+            # failures are recorded as evidence and never fail the check.
+            if config.get("capture_screenshot", True):
+                try:
+                    image = page.screenshot(full_page=True)
+                    if image:
+                        artifact = upload_bytes(
+                            run_id=run_id or monitor.id,
+                            kind="screenshot",
+                            data=image,
+                            mime_type="image/png",
+                            extension="png",
+                        )
+                        summary["screenshot_url"] = artifact["url"]
+                        summary["screenshot_key"] = artifact["storage_key"]
+                        summary["screenshot_size_bytes"] = artifact["size_bytes"]
+                except Exception as exc:  # noqa: BLE001 - artifact capture is best-effort
+                    summary["screenshot_error"] = str(exc)[:300]
+
             context.close()
             browser.close()
     except Exception as exc:  # noqa: BLE001 - launch/navigation failures become evidence
@@ -144,29 +188,6 @@ def perform_browser_check(monitor) -> CheckOutcome:
             )
         )
         summary = {"error": str(exc)[:500]}
-
-    # Capture and upload a final screenshot artifact after check completion
-    try:
-        with sync_playwright() as _playwright:
-            _browser = _playwright.chromium.launch(
-                args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
-            )
-            _context = _browser.new_context()
-            _page = _context.new_page()
-            _final_image = _page.screenshot(full_page=True)
-            if _final_image:
-                artifact_info = upload_bytes(
-                    run_id=monitor.id,
-                    kind="screenshot",
-                    data=_final_image,
-                    mime_type="image/png",
-                )
-                summary["screenshot_url"] = artifact_info["url"]
-                summary["screenshot_key"] = artifact_info["storage_key"]
-            _context.close()
-            _browser.close()
-    except Exception:  # noqa: BLE001 - non-fatal if we can't capture final screenshot
-        pass
 
     overall = "passed" if outcomes and all(step.status == "passed" for step in outcomes) else "failed"
     duration_ms = int((time.perf_counter() - started) * 1000)

@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends
 
 from app.api.v1.endpoints import (
     api_keys,
-    auth,
     artifacts,
+    auth,
     deployments,
     environments,
     incidents,

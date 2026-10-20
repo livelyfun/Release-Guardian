@@ -1,42 +1,55 @@
 """S3-compatible object storage for Release Guardian artifacts.
 
-Artifacts (screenshots, traces, HAR, Lighthouse scores) are stored in
-S3-compatible storage that branches with the Neon project.  The service
-provides upload, signed-URL generation, and listing with tenant
-authorization.
+Artifacts (screenshots, traces, HAR, Lighthouse reports) live in
+S3-compatible storage that can branch with the database.  The service provides
+upload, signed-URL generation, listing, and deletion.  Callers remain
+responsible for tenant authorization; the API layer enforces workspace
+membership before issuing a signed URL.
 
-Env vars (via ``backend/.env.example`` / ``backend/app/core/config.py``):
+Env vars (see ``backend/.env.example``):
 
 - S3_ENDPOINT_URL
 - S3_BUCKET
 - S3_ACCESS_KEY
 - S3_SECRET_KEY
 - S3_REGION
-- S3_USE_SSL (bool)
-- S3_FORCE_PATH_STYLE (bool)
+- S3_USE_SSL
+- S3_FORCE_PATH_STYLE
 """
+
 from __future__ import annotations
 
 import hashlib
-import json
-import os
-import urllib.parse
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
 from typing import Any
+
+from app.core.config import settings
+from app.core.metrics import ARTIFACT_UPLOADS
 
 try:
     import boto3
+    from botocore.config import Config
+    from botocore.exceptions import BotoCoreError, ClientError
+
     HAS_BOTO3 = True
-except ImportError:  # pragma: no cover - boto3 optional in some test environments
+except ImportError:  # pragma: no cover - boto3 is optional in test environments
     HAS_BOTO3 = False
+    ClientError = Exception  # type: ignore[assignment,misc]
+    BotoCoreError = Exception  # type: ignore[assignment,misc]
+    Config = None  # type: ignore[assignment,misc]
 
 
 class StorageError(RuntimeError):
     """Raised when storage operations fail."""
 
 
-def _client() -> "boto3.client":
-    """Return a cached boto3 S3 client built from config."""
+def storage_enabled() -> bool:
+    """Return True when boto3 and the minimum S3 configuration are present."""
+    return bool(HAS_BOTO3 and settings.s3_bucket)
+
+
+def _client() -> Any:
+    """Return a boto3 S3 client built from settings."""
     if not HAS_BOTO3:
         raise StorageError("boto3 is not available. Install boto3 to use artifact storage.")
     kwargs: dict[str, Any] = {
@@ -44,11 +57,10 @@ def _client() -> "boto3.client":
         "region_name": settings.s3_region or "us-east-1",
         "aws_access_key_id": settings.s3_access_key,
         "aws_secret_access_key": settings.s3_secret_key,
+        "use_ssl": settings.s3_use_ssl,
     }
-    if not settings.s3_use_ssl:
-        kwargs["verify"] = False
-    if settings.s3_force_path_style:
-        kwargs["botocore_config"] = {"requester_pays": False, "disable_request_signer": True}
+    if settings.s3_force_path_style and Config is not None:
+        kwargs["config"] = Config(s3={"addressing_style": "path"})
     return boto3.client("s3", **kwargs)
 
 
@@ -56,11 +68,19 @@ def _bucket() -> str:
     return settings.s3_bucket
 
 
-def _object_key(run_id: str, kind: str) -> str:
-    """Generate a deterministic object key: artifacts/<run_id>/<kind>.<ext>"""
-    # Use a short hash of run_id + kind for readability + uniqueness
-    h = hashlib.sha256(f"{run_id}:{kind}".encode()).hexdigest()[:12]
-    return f"artifacts/{run_id}/{kind}-{h}"
+def _object_key(run_id: str, kind: str, extension: str | None = None) -> str:
+    """Build a deterministic, collision-resistant object key."""
+    digest = hashlib.sha256(f"{run_id}:{kind}".encode()).hexdigest()[:12]
+    suffix = f".{extension.lstrip('.')}" if extension else ""
+    return f"artifacts/{run_id}/{kind}-{digest}{suffix}"
+
+
+def _presigned_url(client: Any, key: str, expires_in: int) -> str:
+    return client.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": _bucket(), "Key": key},
+        ExpiresIn=expires_in,
+    )
 
 
 def upload_bytes(
@@ -68,38 +88,35 @@ def upload_bytes(
     kind: str,
     data: bytes,
     mime_type: str | None = None,
-) -> dict[str, str]:
-    """Upload raw bytes and return metadata dict with storage_key and url."""
-    key = _object_key(run_id, kind)
+    extension: str | None = None,
+) -> dict[str, Any]:
+    """Upload raw bytes and return metadata including a signed URL."""
+    key = _object_key(run_id, kind, extension)
     client = _client()
-    bucket = _bucket()
 
-    extra_args: dict[str, Any] = {}
+    extra_args: dict[str, Any] = {
+        "Metadata": {
+            "run_id": run_id,
+            "kind": kind,
+            "uploaded_at": datetime.now(UTC).isoformat(),
+        }
+    }
     if mime_type:
         extra_args["ContentType"] = mime_type
-    # Compute etag for idempotency / debugging
-    extra_args["Metadata"] = {
-        "run_id": run_id,
-        "kind": kind,
-        "uploaded_at": datetime.now(timezone.utc).isoformat(),
-    }
 
     try:
-        client.put_object(Bucket=bucket, Key=key, Body=data, **extra_args)
-    except ClientError as exc:
+        client.put_object(Bucket=_bucket(), Key=key, Body=data, **extra_args)
+        url = _presigned_url(client, key, 7 * 24 * 60 * 60)
+    except (ClientError, BotoCoreError) as exc:
+        ARTIFACT_UPLOADS.inc(kind=kind, status="failure")
         raise StorageError(f"Failed to upload artifact: {exc}") from exc
 
-    # Build a short-lived signed URL (7 days)
-    url = client.generate_presigned_url(
-        "get_object",
-        Params={"Bucket": bucket, "Key": key},
-        ExpiresIn=7 * 24 * 60 * 60,  # 7 days
-    )
-
+    ARTIFACT_UPLOADS.inc(kind=kind, status="success")
     return {
         "storage_key": key,
         "url": url,
         "mime_type": mime_type or _infer_mime(kind),
+        "size_bytes": len(data),
     }
 
 
@@ -107,38 +124,27 @@ def upload_fileobj(
     run_id: str,
     kind: str,
     fileobj: Any,
-    length: int | None = None,
     mime_type: str | None = None,
-) -> dict[str, str]:
-    """Upload from a file-like object.  Used for large trace/HAR archives."""
-    key = _object_key(run_id, kind)
+    extension: str | None = None,
+) -> dict[str, Any]:
+    """Upload from a file-like object (large traces/HAR archives)."""
+    key = _object_key(run_id, kind, extension)
     client = _client()
-    bucket = _bucket()
 
-    extra_args: dict[str, Any] = {}
+    extra_args: dict[str, Any] = {
+        "Metadata": {"run_id": run_id, "kind": kind},
+    }
     if mime_type:
         extra_args["ContentType"] = mime_type
-    extra_args["Metadata"] = {
-        "run_id": run_id,
-        "kind": kind,
-    }
 
     try:
-        client.upload_fileobj(
-            fileobj,
-            Bucket=bucket,
-            Key=key,
-            ExtraArgs=extra_args if extra_args else None,
-        )
-    except ClientError as exc:
+        client.upload_fileobj(fileobj, _bucket(), key, ExtraArgs=extra_args)
+        url = _presigned_url(client, key, 7 * 24 * 60 * 60)
+    except (ClientError, BotoCoreError) as exc:
+        ARTIFACT_UPLOADS.inc(kind=kind, status="failure")
         raise StorageError(f"Failed to upload artifact: {exc}") from exc
 
-    url = client.generate_presigned_url(
-        "get_object",
-        Params={"Bucket": bucket, "Key": key},
-        ExpiresIn=7 * 24 * 60 * 60,
-    )
-
+    ARTIFACT_UPLOADS.inc(kind=kind, status="success")
     return {
         "storage_key": key,
         "url": url,
@@ -148,49 +154,37 @@ def upload_fileobj(
 
 def get_signed_url(storage_key: str, expires_in: int = 7 * 24 * 60 * 60) -> str:
     """Return a short-lived signed URL for an existing artifact key."""
-    client = _client()
-    bucket = _bucket()
-    return client.generate_presigned_url(
-        "get_object",
-        Params={"Bucket": bucket, "Key": storage_key},
-        ExpiresIn=expires_in,
-    )
+    return _presigned_url(_client(), storage_key, expires_in)
 
 
 def list_artifacts(
     run_id: str | None = None,
     prefix: str | None = None,
-) -> list[dict[str, str]]:
-    """List artifacts optionaly filtered by run_id prefix."""
+) -> list[dict[str, Any]]:
+    """List artifacts, optionally filtered by run id or key prefix."""
     client = _client()
-    bucket = _bucket()
 
-    # Build the prefix: "artifacts/<run_id>/" or "artifacts/<prefix>/"
     if run_id:
         prefix = f"artifacts/{run_id}/"
     elif prefix:
-        # ensure trailing slash for consistent listing
         prefix = prefix if prefix.endswith("/") else prefix + "/"
     else:
         prefix = "artifacts/"
 
     try:
-        result = client.list_objects_v2(Bucket=bucket, Prefix=prefix)
-    except ClientError as exc:
+        result = client.list_objects_v2(Bucket=_bucket(), Prefix=prefix)
+    except (ClientError, BotoCoreError) as exc:
         raise StorageError(f"Failed to list artifacts: {exc}") from exc
 
-    items: list[dict[str, str]] = []
+    items: list[dict[str, Any]] = []
     for obj in result.get("Contents", []):
         key = obj["Key"]
-        # strip the bucket prefix to get the logical key
         relative = key[len(prefix) :] if key.startswith(prefix) else key
-        # Determine kind from filename
-        kind = _kind_from_key(relative)
         items.append(
             {
                 "storage_key": key,
-                "url": get_signed_url(key),
-                "kind": kind,
+                "url": _presigned_url(client, key, 7 * 24 * 60 * 60),
+                "kind": _kind_from_key(relative),
                 "size_bytes": obj["Size"],
                 "last_modified": obj["LastModified"].isoformat(),
             }
@@ -198,38 +192,28 @@ def list_artifacts(
     return items
 
 
+def delete_artifact(storage_key: str) -> bool:
+    """Delete a single artifact by its storage key."""
+    try:
+        _client().delete_object(Bucket=_bucket(), Key=storage_key)
+    except (ClientError, BotoCoreError) as exc:
+        raise StorageError(f"Failed to delete artifact: {exc}") from exc
+    return True
+
+
 def _infer_mime(kind: str) -> str:
-    mapping: dict[str, str] = {
+    mapping = {
         "screenshot": "image/png",
         "trace": "application/json",
-        "harl": "application/json",  # HAR log
+        "har": "application/json",
         "lighthouse": "application/json",
     }
     return mapping.get(kind, "application/octet-stream")
 
 
 def _kind_from_key(key: str) -> str:
-    """Derive the artifact kind from the filename stem."""
-    stem = os.path.splitext(key)[0].split("-")[-1]  # last dash-separated part is the kind hint
-    # But our key format is kind-HASH, so the part after the last dash IS the kind
-    # Actually key format: artifacts/<run_id>/<kind>-<hash>
-    # So we need to extract kind from the filename
-    parts = key.split("/")
-    filename = parts[-1] if parts else key
-    # format: kind-<12hash>
-    dash_idx = filename.find("-")
-    if dash_idx == -1:
-        return "unknown"
-    kind = filename[:dash_idx]
-    return kind
-
-
-def delete_artifact(storage_key: str) -> bool:
-    """Delete a single artifact by its storage key."""
-    client = _client()
-    bucket = _bucket()
-    try:
-        client.delete_object(Bucket=bucket, Key=storage_key)
-        return True
-    except ClientError as exc:
-        raise StorageError(f"Failed to delete artifact: {exc}") from exc
+    """Extract the artifact kind from ``<kind>-<hash>[.ext]``."""
+    filename = key.rsplit("/", 1)[-1]
+    stem = filename.split(".", 1)[0]
+    dash_index = stem.find("-")
+    return stem[:dash_index] if dash_index > 0 else "unknown"

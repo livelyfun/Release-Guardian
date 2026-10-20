@@ -1,4 +1,11 @@
-from app.models.execution import Baseline, Run, StepResult
+from app.models.execution import (
+    AIConfiguration,
+    Artifact,
+    Baseline,
+    EscalationRule,
+    Run,
+    StepResult,
+)
 from app.models.identity import ApiKey, AuditLog, Membership, User, Workspace
 from app.models.project import Environment, Monitor, Project
 from app.models.release import (
@@ -11,11 +18,14 @@ from app.models.release import (
 )
 
 __all__ = [
+    "AIConfiguration",
     "ApiKey",
+    "Artifact",
     "AuditLog",
     "Baseline",
     "Deployment",
     "Environment",
+    "EscalationRule",
     "Incident",
     "IncidentEvent",
     "Membership",

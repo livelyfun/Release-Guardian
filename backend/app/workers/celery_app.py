@@ -1,6 +1,9 @@
 from celery import Celery
 
 from app.core.config import settings
+from app.core.observability import configure_logging
+
+configure_logging(settings.log_level)
 
 celery_app = Celery(
     "release_guardian",
