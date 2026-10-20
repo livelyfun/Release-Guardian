@@ -7,7 +7,7 @@ evidence; a local test does not satisfy a staging/production requirement.
 
 | Area | Status | Evidence |
 |---|---|---|
-| Observability (`/metrics`, `/ready`, JSON logs) | Implemented | `backend/app/main.py`, `core/metrics.py`, `core/observability.py` |
+| Observability (`/metrics`, `/ready`, JSON logs) | Implemented | `backend/app/main.py`, `core/metrics.py`, `core/observability.py`; [alerts](prometheus-alerts.yml), [dashboard](grafana-dashboard.json) |
 | SLOs and alerts | Documented, not validated in staging | [SLI-SLO.md](SLI-SLO.md) |
 | Runbooks | Documented | [RUNBOOKS.md](RUNBOOKS.md) |
 | Load test | Tooling + local baseline | [LOAD-AND-RESILIENCE.md](LOAD-AND-RESILIENCE.md) |

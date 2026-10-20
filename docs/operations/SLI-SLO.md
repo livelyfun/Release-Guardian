@@ -121,6 +121,11 @@ sum(rate(rg_artifact_uploads_total[30m]))
 
 ## Alert rules (starting points)
 
+Machine-readable rules live in [`prometheus-alerts.yml`](prometheus-alerts.yml).
+Import [`grafana-dashboard.json`](grafana-dashboard.json) for the matching
+platform overview dashboard. Both are starting points: tune thresholds against
+the staging baseline before production.
+
 | Alert | Expression | For | Severity |
 |---|---|---|---|
 | ApiDown | `up{job="release-guardian-api"} == 0` | 2m | critical |

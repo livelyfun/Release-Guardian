@@ -1,0 +1,136 @@
+groups:
+  - name: release-guardian-api
+    rules:
+      - alert: ReleaseGuardianApiDown
+        expr: up{job="release-guardian-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Release Guardian API target is down
+          runbook: docs/operations/RUNBOOKS.md#1-website-appears-down
+
+      - alert: ReleaseGuardianApiHighErrorRate
+        expr: |
+          (
+            sum(rate(rg_api_requests_total{status=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(rg_api_requests_total[5m])), 0.001)
+          ) > 0.01
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: More than 1% of API requests are failing
+          runbook: docs/operations/RUNBOOKS.md#5-database-unavailable
+
+      - alert: ReleaseGuardianApiLatencyHigh
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(rg_api_request_duration_seconds_bucket{method="GET"}[5m])) by (le)
+          ) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Read p95 latency is above 1s
+          runbook: docs/operations/RUNBOOKS.md#3-queue-backlog-growing
+
+      - alert: ReleaseGuardianReadinessFailing
+        expr: probe_success{job="release-guardian-ready"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: /ready has returned 503 for 5 minutes
+          runbook: docs/operations/RUNBOOKS.md#5-database-unavailable
+
+  - name: release-guardian-execution
+    rules:
+      - alert: ReleaseGuardianSchedulerStale
+        expr: time() - rg_scheduler_last_success_timestamp_seconds > 300
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Due-monitor scheduler has not completed a tick in 5 minutes
+          runbook: docs/operations/RUNBOOKS.md#4-scheduler-stopped
+
+      - alert: ReleaseGuardianSweeperStale
+        expr: time() - rg_sweeper_last_success_timestamp_seconds > 300
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Stale-run sweeper has not completed in 5 minutes
+          runbook: docs/operations/RUNBOOKS.md#3-queue-backlog-growing
+
+      - alert: ReleaseGuardianQueueBacklog
+        expr: rg_pending_runs > 50 or rg_oldest_pending_run_age_seconds > 300
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Pending runs are backing up
+          runbook: docs/operations/RUNBOOKS.md#3-queue-backlog-growing
+
+      - alert: ReleaseGuardianStuckRunGrowth
+        expr: rate(rg_stale_runs_total{action="timed_out"}[1h]) > 0.1
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: Runs are timing out faster than the expected baseline
+          runbook: docs/operations/RUNBOOKS.md#3-queue-backlog-growing
+
+  - name: release-guardian-delivery
+    rules:
+      - alert: ReleaseGuardianNotificationFailures
+        expr: |
+          (
+            sum(rate(rg_notification_attempts_total{status="failed"}[30m]))
+            /
+            clamp_min(
+              sum(rate(rg_notification_attempts_total{status=~"sent|failed"}[30m])),
+              0.001
+            )
+          ) > 0.05
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: Notification failure ratio is above 5%
+          runbook: docs/operations/RUNBOOKS.md#7-notification-provider-unavailable
+
+      - alert: ReleaseGuardianEscalationFailures
+        expr: sum(rate(rg_escalations_total{status="failed"}[15m])) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: Incident escalations are failing
+          runbook: docs/operations/RUNBOOKS.md#7-notification-provider-unavailable
+
+      - alert: ReleaseGuardianArtifactFailures
+        expr: |
+          (
+            sum(rate(rg_artifact_uploads_total{status="failure"}[30m]))
+            /
+            clamp_min(sum(rate(rg_artifact_uploads_total[30m])), 0.001)
+          ) > 0.01
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: More than 1% of artifact uploads are failing
+          runbook: docs/operations/RUNBOOKS.md#11-storage-exhausted
+
+      - alert: ReleaseGuardianSsrfSpike
+        expr: sum(rate(rg_blocked_urls_total[5m])) > 5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: SSRF URL rejections are elevated
+          runbook: docs/operations/RUNBOOKS.md#9-suspected-security-breach
