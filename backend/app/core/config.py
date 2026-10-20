@@ -45,6 +45,22 @@ class Settings(BaseSettings):
     notification_retry_max_seconds: int = Field(default=900, ge=1, le=86400)
     notification_sweep_batch: int = Field(default=100, ge=1, le=1000)
 
+    # SMTP transport for email notification channels (optional).
+    smtp_host: str | None = None
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from: str = "alerts@release-guardian.local"
+    smtp_starttls: bool = True
+    smtp_ssl: bool = False
+    smtp_timeout_seconds: int = Field(default=10, ge=1, le=120)
+
+    # Optional outbound GitHub commit statuses for deployments.
+    github_status_token: str | None = None
+    github_api_url: str = "https://api.github.com"
+    github_status_context: str = "release-guardian"
+    github_status_target_url: str | None = None
+
     log_level: str = "INFO"
     metrics_enabled: bool = True
     metrics_token: str | None = None

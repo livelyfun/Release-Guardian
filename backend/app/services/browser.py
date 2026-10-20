@@ -7,6 +7,7 @@ from urllib.parse import urljoin, urlparse
 from app.core.config import settings
 from app.core.metrics import BLOCKED_URLS
 from app.services.outcomes import CheckOutcome, StepOutcome
+from app.services.redaction import redact_har, redact_url
 from app.services.storage import upload_bytes
 from app.services.url_guard import validate_url
 
@@ -200,10 +201,10 @@ def perform_browser_check(monitor, run_id: str | None = None) -> CheckOutcome:
 
             summary.update(
                 {
-                    "final_url": page.url,
+                    "final_url": redact_url(page.url),
                     "console_errors": console_errors[:20],
-                    "failed_requests": failed_requests[:20],
-                    "blocked_requests": blocked_requests[:20],
+                    "failed_requests": [redact_url(url) for url in failed_requests[:20]],
+                    "blocked_requests": [redact_url(url) for url in blocked_requests[:20]],
                 }
             )
 
@@ -246,15 +247,17 @@ def perform_browser_check(monitor, run_id: str | None = None) -> CheckOutcome:
             if capture_har and har_path:
                 try:
                     with open(har_path, "rb") as har_file:
-                        artifact = upload_bytes(
-                            run_id=run_id or monitor.id,
-                            kind="har",
-                            data=har_file.read(),
-                            mime_type="application/json",
-                            extension="har",
-                        )
+                        har_data, redactions = redact_har(har_file.read())
+                    artifact = upload_bytes(
+                        run_id=run_id or monitor.id,
+                        kind="har",
+                        data=har_data,
+                        mime_type="application/json",
+                        extension="har",
+                    )
                     summary["har_key"] = artifact["storage_key"]
                     summary["har_url"] = artifact["url"]
+                    summary["har_redactions"] = redactions
                 except Exception as exc:  # noqa: BLE001
                     summary["har_error"] = str(exc)[:300]
             browser.close()

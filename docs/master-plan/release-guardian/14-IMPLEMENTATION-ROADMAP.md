@@ -15,9 +15,9 @@ Each phase lists its exit criteria; a phase is complete only when the criteria a
 | B — Engineering foundation | Repo layout, tooling, local containers, CI, logging, tests | Complete |
 | C — Identity and workspace model | Auth, workspaces, memberships, projects, environments, audit | Complete |
 | D — Durable execution platform | Jobs, queue, scheduler, retries, execution tracking | Complete (retries via sweeper; no quarantined DLQ) |
-| E — Monitoring and audit engine | HTTP checks, browser/Lighthouse execution, evidence | Partial (HTTP, Playwright, Lighthouse, screenshots/traces/HAR; artifact redaction pending) |
-| F — Release verification | Deployment events, triggered suites, baselines, regression | Partial (events, triggered runs, baselines, comparison, suppressions; outbound CI status checks pending) |
-| G — Incident management | Alert rules, lifecycle, notifications, escalation | Partial (lifecycle, retries, escalation, maintenance windows; real email transport pending) |
+| E — Monitoring and audit engine | HTTP checks, browser/Lighthouse execution, evidence | Complete (HTTP, Playwright, Lighthouse, screenshots/traces/HAR, HAR/URL redaction; staging capture validation in M8) |
+| F — Release verification | Deployment events, triggered suites, baselines, regression | Complete (events, triggered runs, baselines, comparison, suppressions, GitHub commit statuses) |
+| G — Incident management | Alert rules, lifecycle, notifications, escalation | Partial (lifecycle, retries, escalation, maintenance windows, SMTP + webhooks; additional channels pending) |
 | H — Complete product experience | Dashboards, test builder, reports, API/CLI | Complete (dashboard incl. usage/artifacts/admin/team UI, browser step builder, CSV exports, REST API, API keys, CLI) |
 | I — Advanced capabilities | AI assistance, analytics, billing, regions | Structural only (`AIConfiguration`; features not built) |
 | J — Production readiness | Security validation, load/resilience, DR, runbooks | In progress (deliverables built; staging SLO + drill sign-off pending) |
@@ -40,22 +40,26 @@ Each phase lists its exit criteria; a phase is complete only when the criteria a
 - Runs, step results, inline and Celery execution, manual trigger, scheduled due-check task.
 - Exit criteria: run lifecycle persisted; duplicate scheduling prevented for active runs.
 
-### M4 — Monitoring engine (partial)
+### M4 — Monitoring engine (complete)
 - HTTP availability, status/content assertions, redirect validation, SSRF guard.
 - Playwright browser journeys with route-level SSRF checks, console/network
   evidence, a final screenshot, optional Playwright trace/HAR capture, and
   optional per-step screenshots.
 - Lighthouse audits with category scores, thresholds, and an optional JSON
   report artifact.
-- Remaining: artifact redaction and staging validation of trace/HAR capture.
+- HAR files are redacted before upload (headers, cookies, query strings, form
+  and JSON bodies) and sensitive query values are removed from run summaries.
+- Remaining: staging validation of trace/HAR capture.
 - Exit criteria: a browser journey runs in the worker and retains a screenshot;
   Lighthouse retains scores/report. Met locally; staging evidence pending.
 
-### M5 — Release verification (partial)
+### M5 — Release verification (complete)
 - Deployment ingestion, deployment-triggered runs, latency baseline and
   regression detection, deployment status derivation, previous-known-good
   comparison (API + UI), and time-boxed regression suppressions.
-- Remaining: outbound CI status checks (for example GitHub commit statuses).
+- Outbound GitHub commit statuses (`pending`/`success`/`failure`/`error`) when a
+  project has a GitHub repository URL and `GITHUB_STATUS_TOKEN` is configured;
+  delivery is fail-open and de-duplicated in deployment metadata.
 - Exit criteria: a deployment can be marked passed/failed/inconclusive from
   suite results. Met.
 
@@ -68,7 +72,9 @@ Each phase lists its exit criteria; a phase is complete only when the criteria a
   scheduler sweep.
 - Maintenance windows (workspace/project/environment/monitor scoped) suppress
   incident creation; consecutive-failure thresholds prevent single-blip pages.
-- Remaining: real email transport, more channels.
+- SMTP email transport with STARTTLS/SSL and optional authentication, alongside
+  HMAC-signed webhooks.
+- Remaining: additional channels (for example chat providers).
 - Exit criteria: duplicate failures produce one incident and one notification
   per transition. Met for webhooks.
 

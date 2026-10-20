@@ -4,6 +4,7 @@ from app.models.execution import Run
 from app.models.project import Monitor
 from app.models.release import Deployment
 from app.services.capacity import active_run_for_monitor
+from app.services.github_status import post_deployment_status
 from app.workers.dispatch import dispatch_run
 
 
@@ -63,6 +64,7 @@ def refresh_deployment_status(db: Session, deployment_id: str) -> str | None:
     else:
         deployment.status = "passed"
 
+    post_deployment_status(db, deployment)
     return deployment.status
 
 
