@@ -259,3 +259,10 @@ ESCALATIONS = _register(
         ("status",),
     )
 )
+ARTIFACTS_PRUNED = _register(
+    Counter(
+        "rg_artifacts_pruned_total",
+        "Artifacts deleted by retention status.",
+        ("status",),
+    )
+)

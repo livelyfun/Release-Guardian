@@ -11,6 +11,7 @@ import app.services.checks as checks_module
 import app.services.incidents as incidents_module
 import app.workers.dispatch as dispatch_module
 import app.workers.tasks.checks as worker_checks
+import app.workers.tasks.maintenance as maintenance_module
 from app.core.config import Settings, settings
 from app.core.database import SessionLocal
 from app.core.metrics import render_metrics
@@ -167,6 +168,48 @@ def test_artifact_signed_url_requires_workspace_ownership(client, monkeypatch):
         params={"artifact_key": "artifacts/nope/none"},
     )
     assert missing.status_code == 404
+
+
+def test_artifact_retention_prunes_only_expired_objects(client, monkeypatch):
+    headers, _workspace, monitor = _setup_monitor(client)
+    created = client.post(f"/api/v1/monitors/{monitor['id']}/runs", headers=headers, json={})
+    run_id = created.json()["id"]
+
+    db = SessionLocal()
+    try:
+        old = Artifact(
+            run_id=run_id,
+            kind="screenshot",
+            storage_key="artifacts/old/screenshot.png",
+            created_at=utcnow() - timedelta(days=90),
+        )
+        fresh = Artifact(
+            run_id=run_id,
+            kind="screenshot",
+            storage_key="artifacts/new/screenshot.png",
+            created_at=utcnow(),
+        )
+        db.add_all([old, fresh])
+        db.commit()
+        old_id, fresh_id = old.id, fresh.id
+    finally:
+        db.close()
+
+    deleted: list[str] = []
+    monkeypatch.setattr(maintenance_module, "storage_enabled", lambda: True)
+    monkeypatch.setattr(
+        maintenance_module, "delete_artifact", lambda key: deleted.append(key) or True
+    )
+
+    db = SessionLocal()
+    try:
+        result = maintenance_module.prune_artifacts(db)
+        assert result == {"deleted": 1, "failed": 0}
+        assert deleted == ["artifacts/old/screenshot.png"]
+        assert db.get(Artifact, old_id) is None
+        assert db.get(Artifact, fresh_id) is not None
+    finally:
+        db.close()
 
 
 def test_storage_outage_raises_controlled_error(monkeypatch):

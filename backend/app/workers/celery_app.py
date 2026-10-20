@@ -44,6 +44,10 @@ celery_app.conf.update(
             "task": "release_guardian.retry_notifications",
             "schedule": 30.0,
         },
+        "prune-artifacts": {
+            "task": "release_guardian.prune_artifacts",
+            "schedule": 3600.0,
+        },
     },
 )
 
@@ -81,3 +85,10 @@ def retry_notifications_task() -> dict:
     from app.services.notifications.dispatch import retry_failed_notifications
 
     return retry_failed_notifications()
+
+
+@celery_app.task(name="release_guardian.prune_artifacts")
+def prune_artifacts_task() -> dict:
+    from app.workers.tasks.maintenance import prune_artifacts
+
+    return prune_artifacts()

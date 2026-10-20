@@ -18,14 +18,16 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.metrics import (
+    ARTIFACTS_PRUNED,
     OLDEST_PENDING_RUN_AGE,
     PENDING_RUNS,
     STALE_RUNS,
     SWEEPER_LAST_SUCCESS,
 )
 from app.models.base import utcnow
-from app.models.execution import Run
+from app.models.execution import Artifact, Run
 from app.services.runs import refresh_deployment_status
+from app.services.storage import StorageError, delete_artifact, storage_enabled
 from app.workers.dispatch import dispatch_run
 
 logger = logging.getLogger("release_guardian.maintenance")
@@ -112,3 +114,46 @@ def sweep_stale_runs(db: Session | None = None) -> dict:
         "timed_out": timed_out,
         "dispatch_failures": dispatch_failures,
     }
+
+
+def prune_artifacts(db: Session | None = None) -> dict:
+    """Delete artifact rows and objects older than the retention window."""
+    if settings.artifact_retention_days <= 0:
+        return {"deleted": 0, "failed": 0, "skipped": "retention_disabled"}
+    if not storage_enabled():
+        return {"deleted": 0, "failed": 0, "skipped": "storage_not_configured"}
+
+    owned = db is None
+    session = db or SessionLocal()
+    deleted = failed = 0
+    cutoff = utcnow() - timedelta(days=settings.artifact_retention_days)
+
+    try:
+        artifacts = (
+            session.query(Artifact)
+            .filter(Artifact.created_at < cutoff)
+            .order_by(Artifact.created_at)
+            .limit(settings.artifact_prune_batch)
+            .all()
+        )
+        for artifact in artifacts:
+            try:
+                delete_artifact(artifact.storage_key)
+            except StorageError as exc:
+                failed += 1
+                ARTIFACTS_PRUNED.inc(status="failed")
+                logger.warning(
+                    "artifact_prune_failed",
+                    extra={"artifact_id": artifact.id, "error": str(exc)[:200]},
+                )
+                continue
+            session.delete(artifact)
+            deleted += 1
+            ARTIFACTS_PRUNED.inc(status="deleted")
+        session.commit()
+    finally:
+        if owned:
+            session.close()
+
+    return {"deleted": deleted, "failed": failed}
+

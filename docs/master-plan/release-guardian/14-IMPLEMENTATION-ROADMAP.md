@@ -90,7 +90,8 @@ Each phase lists its exit criteria; a phase is complete only when the criteria a
   rollback procedure.
 - Admission control, Redis rate limiting, scheduler/run locks, stale-run
   sweeper, Celery time limits, Redis AOF, container hardening, configurable
-  Postgres pool sizing, and separate browser/Lighthouse worker queues.
+  Postgres pool sizing, separate browser/Lighthouse worker queues, and an
+  artifact-retention pruning task.
 - Security self-review with residual-risk register and go-live checklist.
 - Cost model and validation checklist.
 - Remaining: run load/restore/rollback drills in staging and record evidence;

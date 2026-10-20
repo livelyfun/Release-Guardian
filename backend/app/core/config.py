@@ -58,6 +58,8 @@ class Settings(BaseSettings):
     s3_use_ssl: bool = True
     s3_force_path_style: bool = False
     artifact_url_ttl_seconds: int = 900
+    artifact_retention_days: int = Field(default=30, ge=0, le=3650)
+    artifact_prune_batch: int = Field(default=200, ge=1, le=2000)
 
     cors_origins: list[str] = ["http://localhost:3000"]
 

@@ -30,7 +30,7 @@
   per-step screenshots in addition to the final screenshot.
 - Browser and Lighthouse runs are routed to dedicated Celery queues consumed
   by an isolated `browser-worker` compose service; Postgres pool sizing is
-  configurable.
+  configurable; an hourly task prunes artifacts past the retention window.
 - Artifacts in S3-compatible storage; ownership is checked (artifact → run →
   environment → project) before issuing a 15-minute signed URL.
 - Usage metering by kind (`runs`, `browser_checks`, `lighthouse_checks`).
