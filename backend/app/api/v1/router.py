@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends
 from app.api.v1.endpoints import (
     api_keys,
     auth,
+    artifacts,
     deployments,
     environments,
     incidents,
@@ -26,3 +27,4 @@ api_router.include_router(deployments.router)
 api_router.include_router(incidents.router)
 api_router.include_router(notifications.router)
 api_router.include_router(api_keys.router)
+api_router.include_router(artifacts.router)

@@ -4,6 +4,7 @@ from urllib.parse import urljoin
 
 from app.core.config import settings
 from app.services.outcomes import CheckOutcome, StepOutcome
+from app.services.storage import upload_bytes
 from app.services.url_guard import validate_url
 
 SUPPORTED_ACTIONS = {
@@ -143,6 +144,29 @@ def perform_browser_check(monitor) -> CheckOutcome:
             )
         )
         summary = {"error": str(exc)[:500]}
+
+    # Capture and upload a final screenshot artifact after check completion
+    try:
+        with sync_playwright() as _playwright:
+            _browser = _playwright.chromium.launch(
+                args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
+            )
+            _context = _browser.new_context()
+            _page = _context.new_page()
+            _final_image = _page.screenshot(full_page=True)
+            if _final_image:
+                artifact_info = upload_bytes(
+                    run_id=monitor.id,
+                    kind="screenshot",
+                    data=_final_image,
+                    mime_type="image/png",
+                )
+                summary["screenshot_url"] = artifact_info["url"]
+                summary["screenshot_key"] = artifact_info["storage_key"]
+            _context.close()
+            _browser.close()
+    except Exception:  # noqa: BLE001 - non-fatal if we can't capture final screenshot
+        pass
 
     overall = "passed" if outcomes and all(step.status == "passed" for step in outcomes) else "failed"
     duration_ms = int((time.perf_counter() - started) * 1000)

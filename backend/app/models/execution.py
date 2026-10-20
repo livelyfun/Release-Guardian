@@ -43,6 +43,19 @@ class StepResult(IdMixin, TimestampMixin, Base):
     run: Mapped["Run"] = relationship(back_populates="steps")
 
 
+class Artifact(IdMixin, TimestampMixin, Base):
+    __tablename__ = "artifacts"
+
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("runs.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(30))  # screenshot | trace | harl | lighthouse
+    storage_key: Mapped[str] = mapped_column(String(500), unique=True)
+    url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    mime_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+
 class Baseline(IdMixin, TimestampMixin, Base):
     __tablename__ = "baselines"
     __table_args__ = (UniqueConstraint("monitor_id", "metric", name="uq_baseline_monitor_metric"),)

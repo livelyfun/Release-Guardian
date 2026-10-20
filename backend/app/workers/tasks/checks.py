@@ -1,6 +1,6 @@
 from app.core.database import SessionLocal
 from app.models.base import utcnow
-from app.models.execution import Run, StepResult
+from app.models.execution import Run, StepResult, Artifact
 from app.models.project import Environment, Monitor, Project
 from app.models.release import UsageRecord
 from app.services.checks import perform_check
@@ -12,6 +12,7 @@ from app.services.incidents import (
 from app.services.notifications import dispatch as notification_dispatch
 from app.services.regression import summarize as summarize_regression
 from app.services.runs import refresh_deployment_status
+from app.services.storage import get_signed_url
 
 
 def execute_run(run_id: str) -> dict:
@@ -56,6 +57,11 @@ def execute_run(run_id: str) -> dict:
         run.duration_ms = outcome.duration_ms
         run.finished_at = utcnow()
         run.summary = outcome.summary
+        # Attach artifact URLs from the check outcome
+        if outcome.summary.get("screenshot_url"):
+            run.summary["screenshot_url"] = outcome.summary["screenshot_url"]
+        if outcome.summary.get("screenshot_key"):
+            run.summary["screenshot_key"] = outcome.summary["screenshot_key"]
         monitor.last_checked_at = run.finished_at
 
         opened_incidents = []
