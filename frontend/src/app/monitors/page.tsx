@@ -4,9 +4,10 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { Badge, ErrorNotice, PageHeader, Spinner, formatDate } from "@/components/ui";
+import { StepBuilder } from "@/components/step-builder";
 import { apiClient, ApiError } from "@/lib/api";
 import { useActiveWorkspaceId, useApi } from "@/lib/hooks";
-import type { Environment, Monitor, MonitorKind } from "@/lib/types";
+import type { BrowserStep, Environment, Monitor, MonitorKind } from "@/lib/types";
 
 function MonitorsInner() {
   const searchParams = useSearchParams();
@@ -32,17 +33,38 @@ function MonitorsInner() {
   });
   const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [steps, setSteps] = useState<BrowserStep[]>([
+    { action: "goto", url: "/" },
+    { action: "expect_visible", selector: "body" },
+  ]);
+  const [captureTrace, setCaptureTrace] = useState(false);
+  const [captureHar, setCaptureHar] = useState(false);
+  const [screenshotEachStep, setScreenshotEachStep] = useState(false);
+  const [formFactor, setFormFactor] = useState("desktop");
+  const [saveReport, setSaveReport] = useState(true);
 
   async function create(event: React.FormEvent) {
     event.preventDefault();
     setBusy(true);
     setFormError(null);
     try {
+      const config =
+        form.kind === "browser"
+          ? {
+              steps,
+              capture_trace: captureTrace,
+              capture_har: captureHar,
+              screenshot_each_step: screenshotEachStep,
+            }
+          : form.kind === "lighthouse"
+            ? { form_factor: formFactor, save_assets: saveReport }
+            : {};
       await apiClient.post(`/environments/${form.environment_id}/monitors`, {
         name: form.name,
         kind: form.kind,
         target_url: form.target_url,
         interval_seconds: form.interval_seconds,
+        config,
       });
       setForm((prev) => ({ ...prev, name: "", target_url: "" }));
       monitors.reload();
@@ -121,6 +143,70 @@ function MonitorsInner() {
         <button className="btn-primary" disabled={busy}>
           {busy ? "Adding…" : "Add monitor"}
         </button>
+
+        {form.kind === "browser" ? (
+          <div className="space-y-4 border-t border-slate-100 pt-4 lg:col-span-5">
+            <StepBuilder steps={steps} onChange={setSteps} disabled={busy} />
+            <div className="flex flex-wrap gap-5 text-sm text-slate-600">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={captureTrace}
+                  disabled={busy}
+                  onChange={(event) => setCaptureTrace(event.target.checked)}
+                />
+                Capture Playwright trace
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={captureHar}
+                  disabled={busy}
+                  onChange={(event) => setCaptureHar(event.target.checked)}
+                />
+                Capture HAR
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={screenshotEachStep}
+                  disabled={busy}
+                  onChange={(event) => setScreenshotEachStep(event.target.checked)}
+                />
+                Screenshot every step
+              </label>
+            </div>
+          </div>
+        ) : null}
+
+        {form.kind === "lighthouse" ? (
+          <div className="flex flex-wrap items-end gap-4 border-t border-slate-100 pt-4 lg:col-span-5">
+            <div>
+              <label className="label" htmlFor="lighthouse-factor">
+                Form factor
+              </label>
+              <select
+                id="lighthouse-factor"
+                className="input w-auto"
+                value={formFactor}
+                disabled={busy}
+                onChange={(event) => setFormFactor(event.target.value)}
+              >
+                <option value="desktop">Desktop</option>
+                <option value="mobile">Mobile</option>
+              </select>
+            </div>
+            <label className="flex items-center gap-2 pb-2 text-sm text-slate-600">
+              <input
+                type="checkbox"
+                checked={saveReport}
+                disabled={busy}
+                onChange={(event) => setSaveReport(event.target.checked)}
+              />
+              Save the JSON report as an artifact
+            </label>
+          </div>
+        ) : null}
       </form>
 
       {formError ? <div className="mb-4"><ErrorNotice message={formError} /></div> : null}

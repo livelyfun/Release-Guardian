@@ -48,6 +48,33 @@ export interface Environment {
 
 export type MonitorKind = "http" | "browser" | "lighthouse";
 
+export type BrowserStepAction =
+  | "goto"
+  | "click"
+  | "fill"
+  | "select"
+  | "press"
+  | "expect_text"
+  | "expect_visible"
+  | "expect_url"
+  | "wait"
+  | "screenshot";
+
+export interface BrowserStep {
+  action: BrowserStepAction;
+  name?: string;
+  url?: string;
+  selector?: string;
+  value?: string;
+  key?: string;
+  text?: string;
+  exact?: boolean;
+  contains?: string;
+  ms?: number;
+  full_page?: boolean;
+  wait_until?: string;
+}
+
 export interface Monitor {
   id: string;
   environment_id: string;
@@ -56,8 +83,16 @@ export interface Monitor {
   target_url: string;
   interval_seconds: number;
   enabled: boolean;
+  config: Record<string, unknown>;
   last_checked_at: string | null;
   created_at: string;
+}
+
+export interface RegressionSuppression {
+  monitor_id: string;
+  active: boolean;
+  until: string | null;
+  reason: string;
 }
 
 export type RunStatus = "pending" | "running" | "passed" | "failed" | "inconclusive";

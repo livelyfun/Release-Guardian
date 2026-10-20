@@ -51,7 +51,7 @@
 2. M4: Playwright traces/HAR and step-level screenshots; artifact redaction.
 3. M5: previous-known-good comparison, CI status checks, regression suppressions.
 4. M6: maintenance windows, notification retry/backoff, real email transport.
-5. M7: visual test builder, exports, CLI.
+5. M7: exports, CLI.
 6. I: AI assistance + evaluation harness, analytics, billing plans, regions.
 
 ## Quick commands

@@ -75,12 +75,14 @@ Each phase lists its exit criteria; a phase is complete only when the criteria a
 ### M7 — Product experience and platform API (partial)
 - Next.js dashboard for workspaces, projects, monitors, runs, deployments,
   incidents, keys, audit, usage totals, artifact previews, escalation rules,
-  maintenance windows, and team member roles.
+  maintenance windows, team member roles, and regression suppressions.
+- Visual browser-journey step builder (create and edit) with trace, HAR, and
+  per-step screenshot options; Lighthouse form-factor and report controls.
 - API-key authentication and workspace role gates.
-- Remaining: visual test builder, exports, CLI.
+- Remaining: exports, CLI.
 - Exit criteria: a new user completes the core workflow without API calls.
-  Met for the read/trigger workflow; authoring a browser journey still needs
-  JSON config.
+  Met for workspace setup, authoring HTTP/browser/Lighthouse checks, and
+  reviewing results.
 
 ### M8 — Production readiness (in progress)
 - Structured JSON logs with request IDs; `/health`, `/ready`, `/metrics`
