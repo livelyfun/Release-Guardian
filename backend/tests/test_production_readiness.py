@@ -1,16 +1,22 @@
 import json
+from datetime import timedelta
 from types import SimpleNamespace
 
 import app.api.v1.endpoints.runs as runs_endpoint
 import app.services.checks as checks_module
+import app.workers.tasks.checks as worker_checks
 import pytest
 from app.core.config import Settings, settings
+from app.core.database import SessionLocal
 from app.core.metrics import render_metrics
 from app.core.production import production_config_issues
 from app.core.rate_limit import _use_redis
+from app.models.base import utcnow
+from app.models.execution import Run
 from app.services import locks, storage
 from app.services.secret_scanner import mask_secret, scan_config
 from app.services.url_guard import UrlValidationError, validate_url
+from app.workers.tasks import maintenance
 from app.workers.tasks import scheduler as scheduler_module
 
 from tests.conftest import auth_headers, register
@@ -244,6 +250,81 @@ def test_deployment_skips_monitor_with_active_run(client, monkeypatch):
 
     runs = client.get(f"/api/v1/monitors/{monitor['id']}/runs", headers=headers).json()
     assert len(runs) == 1
+
+
+def test_sweeper_redispatches_old_pending_runs(client, monkeypatch):
+    _headers, _workspace, monitor = _setup_monitor(client)
+    db = SessionLocal()
+    try:
+        run = Run(
+            monitor_id=monitor["id"],
+            environment_id=monitor["environment_id"],
+            status="pending",
+            trigger="manual",
+        )
+        db.add(run)
+        db.commit()
+        run.created_at = utcnow() - timedelta(seconds=settings.pending_run_timeout_seconds + 60)
+        db.commit()
+        run_id = run.id
+    finally:
+        db.close()
+
+    dispatched = []
+    monkeypatch.setattr(maintenance, "dispatch_run", lambda run_id: dispatched.append(run_id))
+    result = maintenance.sweep_stale_runs()
+
+    assert result["redispatched"] == [run_id]
+    assert dispatched == [run_id]
+
+
+def test_sweeper_times_out_stuck_running_run(client):
+    _headers, _workspace, monitor = _setup_monitor(client)
+    db = SessionLocal()
+    try:
+        run = Run(
+            monitor_id=monitor["id"],
+            environment_id=monitor["environment_id"],
+            status="running",
+            trigger="manual",
+            started_at=utcnow() - timedelta(seconds=settings.run_timeout_seconds + 120),
+        )
+        db.add(run)
+        db.commit()
+        run_id = run.id
+    finally:
+        db.close()
+
+    result = maintenance.sweep_stale_runs()
+    assert result["timed_out"] == [run_id]
+
+    db = SessionLocal()
+    try:
+        refreshed = db.get(Run, run_id)
+        assert refreshed.status == "inconclusive"
+        assert "exceeded" in refreshed.summary["error"]
+    finally:
+        db.close()
+
+
+def test_execute_run_skips_terminal_run(client, monkeypatch):
+    headers, _workspace, monitor = _setup_monitor(client)
+    created = client.post(f"/api/v1/monitors/{monitor['id']}/runs", headers=headers, json={})
+    assert created.status_code == 201
+    run_id = created.json()["id"]
+
+    def must_not_execute(monitor, run_id=None):
+        raise AssertionError("terminal run was executed again")
+
+    monkeypatch.setattr(checks_module, "perform_http_check", must_not_execute)
+    result = worker_checks.execute_run(run_id)
+    assert result["skipped"] == "terminal"
+
+
+def test_execute_run_ignores_duplicate_lock(monkeypatch):
+    monkeypatch.setattr(worker_checks, "acquire_run_lock", lambda run_id: (False, None))
+    result = worker_checks.execute_run("run-does-not-matter")
+    assert result["status"] == "duplicate"
 
 
 def test_manual_trigger_rejects_duplicate_active_run(client, monkeypatch):

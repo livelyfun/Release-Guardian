@@ -223,3 +223,10 @@ BLOCKED_URLS = _register(
 ACTIVE_RUNS = _register(
     Gauge("rg_active_runs", "Runs currently executing in this process.", ("kind",))
 )
+STALE_RUNS = _register(
+    Counter(
+        "rg_stale_runs_total",
+        "Stale runs handled by the maintenance sweeper.",
+        ("action",),
+    )
+)

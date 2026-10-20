@@ -12,6 +12,7 @@ from app.services.incidents import (
     open_regression_incident,
     resolve_open_incidents,
 )
+from app.services.locks import acquire_run_lock, release_run_lock
 from app.services.notifications import dispatch as notification_dispatch
 from app.services.regression import summarize as summarize_regression
 from app.services.runs import refresh_deployment_status
@@ -40,12 +41,30 @@ def _record_artifact(db, run: Run, outcome) -> None:
 
 
 def execute_run(run_id: str) -> dict:
+    acquired, lock_token = acquire_run_lock(run_id)
+    if not acquired:
+        logger.info("run_duplicate_dispatch_ignored", extra={"run_id": run_id})
+        return {"run_id": run_id, "status": "duplicate"}
+
     db = SessionLocal()
     active_kind: str | None = None
     try:
         run = db.get(Run, run_id)
         if run is None:
             return {"run_id": run_id, "status": "not_found"}
+
+        if run.status in {"passed", "failed", "inconclusive"}:
+            # Broker redelivery after completion: do not duplicate evidence,
+            # usage records, or incident transitions.
+            return {"run_id": run_id, "status": run.status, "skipped": "terminal"}
+
+        if run.status == "running":
+            # A previous worker died mid-run (the sweeper re-dispatched it).
+            # Clear the partial attempt before re-executing.
+            db.query(StepResult).filter(StepResult.run_id == run.id).delete()
+            run.summary = {}
+            run.finished_at = None
+            db.commit()
 
         monitor = db.get(Monitor, run.monitor_id)
         if monitor is None:
@@ -174,3 +193,4 @@ def execute_run(run_id: str) -> dict:
         return {"run_id": run_id, "status": "error", "error": str(exc)[:500]}
     finally:
         db.close()
+        release_run_lock(run_id, lock_token)

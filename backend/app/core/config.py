@@ -20,6 +20,8 @@ class Settings(BaseSettings):
 
     worker_mode: str = "celery"  # celery | inline
     run_timeout_seconds: int = 300
+    pending_run_timeout_seconds: int = 120
+    stale_run_sweep_batch: int = 100
     step_timeout_seconds: int = 60
     max_redirects: int = 5
     allow_private_urls: bool = False
