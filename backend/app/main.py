@@ -15,6 +15,7 @@ from app.core.database import Base, SessionLocal, engine
 from app.core.errors import install_error_handlers
 from app.core.metrics import API_LATENCY, API_REQUESTS, render_metrics
 from app.core.observability import configure_logging, request_id_var
+from app.core.production import validate_production_settings
 
 logger = logging.getLogger("release_guardian.api")
 
@@ -31,6 +32,7 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
+    validate_production_settings(settings)
     configure_logging(settings.log_level)
 
     app = FastAPI(

@@ -5,8 +5,10 @@ import pytest
 
 import app.api.v1.endpoints.runs as runs_endpoint
 import app.services.checks as checks_module
-from app.core.config import settings
+from app.core.config import Settings, settings
 from app.core.metrics import render_metrics
+from app.core.production import production_config_issues
+from app.core.rate_limit import _use_redis
 from app.services import storage
 from app.services.secret_scanner import mask_secret, scan_config
 from app.services.url_guard import UrlValidationError, validate_url
@@ -151,6 +153,49 @@ def test_secret_scanner_detects_and_masks():
     assert findings
     assert raw not in findings[0].value
     assert mask_secret("short") == "*****"
+
+
+def test_production_config_guard_flags_defaults():
+    unsafe = Settings(
+        _env_file=None,
+        environment="production",
+        jwt_secret="change-me-in-production",
+        webhook_signing_secret="change-me-webhook-secret",
+        database_url="sqlite://",
+        allow_private_urls=True,
+        cors_origins=["*"],
+    )
+    issues = production_config_issues(unsafe)
+    text = " ".join(issues)
+    assert "JWT_SECRET" in text
+    assert "WEBHOOK_SIGNING_SECRET" in text
+    assert "SQLite" in text
+    assert "ALLOW_PRIVATE_URLS" in text
+    assert "CORS_ORIGINS" in text
+
+
+def test_production_config_guard_accepts_hardened_config():
+    safe = Settings(
+        _env_file=None,
+        environment="production",
+        jwt_secret="a" * 48,
+        webhook_signing_secret="b" * 32,
+        database_url="postgresql+psycopg://user:pass@db:5432/rg",
+        allow_private_urls=False,
+        cors_origins=["https://app.example.com"],
+        worker_mode="celery",
+    )
+    assert production_config_issues(safe) == []
+
+
+def test_rate_limit_backend_selection(monkeypatch):
+    monkeypatch.setattr(settings, "rate_limit_backend", "memory")
+    assert _use_redis() is False
+    monkeypatch.setattr(settings, "rate_limit_backend", "auto")
+    monkeypatch.setattr(settings, "worker_mode", "celery")
+    assert _use_redis() is True
+    monkeypatch.setattr(settings, "worker_mode", "inline")
+    assert _use_redis() is False
 
 
 def test_manual_trigger_rejects_duplicate_active_run(client, monkeypatch):

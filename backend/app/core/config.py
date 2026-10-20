@@ -26,6 +26,7 @@ class Settings(BaseSettings):
 
     rate_limit_auth_per_minute: int = 20
     rate_limit_api_per_minute: int = 300
+    rate_limit_backend: str = "auto"  # auto | memory | redis
 
     # Backpressure: bound queued/executing work per monitor and workspace.
     max_active_runs_per_monitor: int = 1
