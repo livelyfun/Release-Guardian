@@ -6,6 +6,7 @@ import pytest
 
 import app.api.v1.endpoints.artifacts as artifacts_endpoint
 import app.api.v1.endpoints.runs as runs_endpoint
+import app.main as main_module
 import app.services.checks as checks_module
 import app.services.incidents as incidents_module
 import app.workers.tasks.checks as worker_checks
@@ -66,6 +67,34 @@ def test_metrics_endpoint_exposes_series(client):
     assert "# TYPE rg_api_requests_total counter" in body
     assert 'rg_api_requests_total{method="GET",route="/health",status="200"}' in body
     assert "# TYPE rg_runs_total counter" in body
+
+
+def test_readiness_hides_internal_errors(client, monkeypatch):
+    def broken_session():
+        raise RuntimeError("postgresql://release_guardian:supersecret@db:5432/rg")
+
+    monkeypatch.setattr(main_module, "SessionLocal", broken_session)
+    response = client.get("/ready")
+    assert response.status_code == 503
+    assert response.json()["checks"]["database"] == "error"
+    assert "supersecret" not in response.text
+    assert "postgresql://" not in response.text
+
+
+def test_security_headers_and_request_id_are_sanitized(client):
+    response = client.get("/health", headers={"X-Request-ID": "bad id<script>"})
+    assert response.status_code == 200
+    assert response.headers["X-Request-ID"] == "badidscript"
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["X-Frame-Options"] == "DENY"
+    assert response.headers["Referrer-Policy"] == "no-referrer"
+
+
+def test_unmatched_routes_use_a_bounded_metric_label(client):
+    assert client.get("/definitely-not-a-real-route").status_code == 404
+    metrics = render_metrics()
+    assert 'route="<unmatched>"' in metrics
+    assert 'route="/definitely-not-a-real-route"' not in metrics
 
 
 def test_metrics_token_protects_endpoint(client, monkeypatch):

@@ -13,6 +13,7 @@
 # the postgres image (included in postgres:16-alpine).
 
 set -euo pipefail
+umask 077
 
 COMPOSE_FILE=${COMPOSE_FILE:-docker-compose.yml}
 POSTGRES_SERVICE=${POSTGRES_SERVICE:-postgres}
@@ -21,6 +22,13 @@ POSTGRES_DB=${POSTGRES_DB:-release_guardian}
 DRILL_DB=${DRILL_DB:-release_guardian_restore_drill}
 BACKUP_DIR=${BACKUP_DIR:-/tmp/opencode/rg-backups}
 KEEP_DRILL_DB=${KEEP_DRILL_DB:-0}
+
+# The drill database name is interpolated into SQL identifiers, so constrain it
+# to a safe unquoted identifier before any statement is built.
+if [[ ! "$DRILL_DB" =~ ^[A-Za-z_][A-Za-z0-9_]{0,62}$ ]]; then
+  echo "DRILL_DB must be a valid unquoted PostgreSQL identifier" >&2
+  exit 2
+fi
 
 TABLES=(users workspaces memberships projects environments monitors runs step_results incidents)
 
@@ -37,7 +45,7 @@ cleanup() {
   if [[ "$KEEP_DRILL_DB" != "1" ]]; then
     dc exec -T "$POSTGRES_SERVICE" \
       psql -U "$POSTGRES_USER" -d postgres -v ON_ERROR_STOP=1 \
-      -c "DROP DATABASE IF EXISTS ${DRILL_DB};" >/dev/null
+      -c "DROP DATABASE IF EXISTS ${DRILL_DB};" >/dev/null 2>&1 || true
   fi
 }
 trap cleanup EXIT

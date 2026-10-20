@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -52,7 +53,8 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def observe_request(request: Request, call_next):
-        request_id = request.headers.get("X-Request-ID", uuid.uuid4().hex)
+        supplied = request.headers.get("X-Request-ID", "")
+        request_id = re.sub(r"[^A-Za-z0-9._-]", "", supplied)[:64] or uuid.uuid4().hex
         token = request_id_var.set(request_id)
         started = time.perf_counter()
         status_code = 500
@@ -64,11 +66,21 @@ def create_app() -> FastAPI:
         finally:
             elapsed = time.perf_counter() - started
             route = request.scope.get("route")
-            route_path = getattr(route, "path", request.url.path)
+            # Never label metrics with an unmatched raw path: scanners would
+            # create unbounded label cardinality and memory growth.
+            route_path = getattr(route, "path", None) or "<unmatched>"
             API_REQUESTS.inc(method=request.method, route=route_path, status=str(status_code))
             API_LATENCY.observe(elapsed, method=request.method, route=route_path)
             if response is not None:
                 response.headers["X-Request-ID"] = request_id
+                response.headers.setdefault("X-Content-Type-Options", "nosniff")
+                response.headers.setdefault("X-Frame-Options", "DENY")
+                response.headers.setdefault("Referrer-Policy", "no-referrer")
+                if settings.environment == "production":
+                    response.headers.setdefault(
+                        "Strict-Transport-Security",
+                        "max-age=31536000; includeSubDomains",
+                    )
             request_id_var.reset(token)
 
     install_error_handlers(app)
@@ -94,7 +106,11 @@ def create_app() -> FastAPI:
                 db.execute(text("SELECT 1"))
             checks["database"] = "ok"
         except Exception as exc:  # noqa: BLE001 - readiness must never raise
-            checks["database"] = f"error: {exc}"
+            # Log the detail; never return connection strings to an unauthenticated probe.
+            logger.warning(
+                "readiness_database_failed", extra={"error": str(exc)[:500]}
+            )
+            checks["database"] = "error"
             ok = False
 
         if settings.worker_mode == "celery" and settings.readiness_check_redis:
@@ -102,10 +118,14 @@ def create_app() -> FastAPI:
                 import redis
 
                 client = redis.Redis.from_url(settings.redis_url, socket_connect_timeout=1)
-                client.ping()
+                try:
+                    client.ping()
+                finally:
+                    client.close()
                 checks["redis"] = "ok"
             except Exception as exc:  # noqa: BLE001
-                checks["redis"] = f"error: {exc}"
+                logger.warning("readiness_redis_failed", extra={"error": str(exc)[:500]})
+                checks["redis"] = "error"
                 ok = False
 
         body = {"status": "ready" if ok else "not_ready", "checks": checks}

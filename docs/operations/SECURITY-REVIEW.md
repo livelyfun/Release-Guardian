@@ -45,10 +45,15 @@ and egress-firewall verification are still required before production sign-off.
 | `storage.py` referenced missing imports (`settings`, `ClientError`) | Artifact failures/NameError | Correct imports, optional-boto3 fallback, metrics |
 | Secret scanner referenced undefined `results` | Security check crashed | Rewritten scanner with masked findings and CLI exit code |
 | Artifact signed URLs valid for 7 days | Long-lived bearer URLs | Reduced to 900 s (configurable) |
+| Signed URL endpoint checked workspace but not artifact ownership | Cross-tenant URL if a key leaked | Resolve artifact → run → environment → project; 404 on mismatch |
 | In-memory rate limits per API replica | Quota bypass by replica fan-out | Redis-backed shared limiter with fallback |
 | Default secrets allowed in production | Token/signature forgery | Startup refusal via `production.py` |
 | Duplicate run execution on redelivery | Duplicate incidents/usage | Per-run Redis lock + terminal-status guard |
 | API container ran as root | Larger blast radius | Non-root UID 10001 |
+| `/ready` returned raw DB/Redis exceptions | Internal host/credential detail leak | Log detail server-side; probe returns `error` |
+| Metrics labeled by raw unmatched paths | Unbounded cardinality / memory growth | Unmatched requests share `<unmatched>` |
+| Unvalidated artifact key could acquire a signed URL | Cross-tenant bearer URL | Ownership lookup before signing |
+| Backup drill interpolated `DRILL_DB` into SQL | Accidental/injected identifier | Strict identifier validation + `umask 077` dumps |
 
 ## Residual risks
 

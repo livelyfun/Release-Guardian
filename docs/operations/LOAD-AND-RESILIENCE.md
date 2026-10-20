@@ -69,6 +69,8 @@ Interpretation: HTTP checks against a local fixture cost roughly 49 ms of
 execution each up to p50; the write path is dominated by check execution +
 incident/baseline bookkeeping, not by HTTP overhead.
 
+Raw report: [`evidence/loadtest-local-2026-10-20.json`](evidence/loadtest-local-2026-10-20.json).
+
 ### Staging gate
 
 Run against staging (Postgres + Redis + Celery + at least 2 workers) at the

@@ -1,0 +1,60 @@
+{
+  "generated_at": "2026-10-20T06:14:59.904473+00:00",
+  "base_url": "http://127.0.0.1:8010",
+  "scenario": "all",
+  "requests_per_scenario": 40,
+  "concurrency": 8,
+  "fixture_url": "http://127.0.0.1:8099/",
+  "api_health": {
+    "status": "ok",
+    "service": "Release Guardian",
+    "version": "0.1.0",
+    "environment": "development",
+    "worker_mode": "inline"
+  },
+  "api_available": true,
+  "setup_seconds": 0.85,
+  "read_scenario": {
+    "requests": 40,
+    "duration_seconds": 0.493,
+    "throughput_rps": 81.11,
+    "latency_ms": {
+      "p50": 74.14,
+      "p95": 160.67,
+      "p99": 184.75,
+      "max": 184.75,
+      "mean": 93.39
+    }
+  },
+  "runs_scenario": {
+    "requests": 40,
+    "duration_seconds": 1.957,
+    "throughput_rps": 20.44,
+    "latency_ms": {
+      "p50": 286.9,
+      "p95": 686.71,
+      "p99": 1477.3,
+      "max": 1477.3,
+      "mean": 367.27
+    }
+  },
+  "totals": {
+    "requests": 80,
+    "status_counts": {
+      "200": 40,
+      "201": 40
+    },
+    "run_status_counts": {
+      "passed": 40
+    },
+    "error_rate": 0.0,
+    "latency_ms": {
+      "p50": 160.67,
+      "p95": 606.69,
+      "p99": 713.32,
+      "max": 1477.3,
+      "mean": 230.33
+    }
+  },
+  "errors": []
+}
