@@ -12,14 +12,14 @@ def _queue_for_run(run_id: str) -> str:
             run = db.get(Run, run_id)
             monitor = db.get(Monitor, run.monitor_id) if run else None
             if monitor is None:
-                return "celery"
+                return "release_guardian"
             if monitor.kind == "browser":
                 return "browser"
             if monitor.kind == "lighthouse":
                 return "lighthouse"
     except Exception:  # noqa: BLE001 - routing must never block a run
-        return "celery"
-    return "celery"
+        return "release_guardian"
+    return "release_guardian"
 
 
 def dispatch_run(run_id: str) -> None:

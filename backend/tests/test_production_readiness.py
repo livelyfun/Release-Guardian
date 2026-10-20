@@ -520,7 +520,7 @@ def test_dispatches_heavy_checks_to_isolated_queues(client, monkeypatch):
 
     dispatch_module.dispatch_run(http_run["id"])
     dispatch_module.dispatch_run(browser_run["id"])
-    assert calls == ["celery", "browser"]
+    assert calls == ["release_guardian", "browser"]
 
 
 def test_manual_trigger_enforces_workspace_capacity(client, monkeypatch):
