@@ -16,6 +16,40 @@ def _as_utc(value: datetime) -> datetime:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value
 
 
+def failure_threshold(monitor) -> int:
+    """Consecutive failed runs required before opening an incident (1-10)."""
+    raw = (monitor.config or {}).get("consecutive_failures", 1)
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return 1
+    return min(max(value, 1), 10)
+
+
+def failure_threshold_reached(db: Session, run: Run, threshold: int) -> bool:
+    """Count the current run plus immediately preceding runs for this monitor."""
+    if threshold <= 1:
+        return True
+
+    recent = (
+        db.query(Run.status)
+        .filter(
+            Run.monitor_id == run.monitor_id,
+            Run.id != run.id,
+            Run.status.in_(["passed", "failed"]),
+        )
+        .order_by(Run.created_at.desc())
+        .limit(threshold - 1)
+        .all()
+    )
+    failures = 1
+    for (status,) in recent:
+        if status != "failed":
+            break
+        failures += 1
+    return failures >= threshold
+
+
 def resolve_open_incidents(db: Session, dedupe_key: str) -> list[Incident]:
     open_incidents = (
         db.query(Incident)

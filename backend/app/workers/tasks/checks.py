@@ -8,11 +8,14 @@ from app.models.project import Environment, Monitor, Project
 from app.models.release import UsageRecord
 from app.services.checks import perform_check
 from app.services.incidents import (
+    failure_threshold,
+    failure_threshold_reached,
     open_or_refresh_incident,
     open_regression_incident,
     resolve_open_incidents,
 )
 from app.services.locks import acquire_run_lock, release_run_lock
+from app.services.maintenance import active_maintenance_window, window_summary
 from app.services.notifications import dispatch as notification_dispatch
 from app.services.regression import summarize as summarize_regression
 from app.services.runs import refresh_deployment_status
@@ -121,6 +124,7 @@ def execute_run(run_id: str) -> dict:
         opened_incidents = []
         resolved_incidents = []
         if project is not None and environment is not None:
+            window = active_maintenance_window(db, project, monitor)
             # Track usage per check type
             metric = "runs"
             if monitor.kind == "lighthouse":
@@ -130,16 +134,28 @@ def execute_run(run_id: str) -> dict:
             db.add(UsageRecord(workspace_id=project.workspace_id, metric=metric, quantity=1.0))
             if outcome.status == "failed":
                 reason = outcome.steps[-1].error or "Check failed"
-                incident, created = open_or_refresh_incident(
-                    db, run, monitor, environment, project, reason
-                )
-                if created:
-                    opened_incidents.append(incident)
+                threshold = failure_threshold(monitor)
+                if window is not None:
+                    run.summary["maintenance_window"] = window_summary(window)
+                    run.summary["incident_suppressed"] = "maintenance_window"
+                elif not failure_threshold_reached(db, run, threshold):
+                    run.summary["incident_suppressed"] = {
+                        "reason": "consecutive_failures",
+                        "threshold": threshold,
+                    }
+                else:
+                    incident, created = open_or_refresh_incident(
+                        db, run, monitor, environment, project, reason
+                    )
+                    if created:
+                        opened_incidents.append(incident)
             else:
                 resolved_incidents += resolve_open_incidents(db, f"monitor:{monitor.id}:failure")
 
                 regression = summarize_regression(db, monitor, run, outcome.duration_ms)
-                if regression.get("regression"):
+                if regression.get("regression") and window is not None:
+                    run.summary["regression_incident_suppressed"] = "maintenance_window"
+                elif regression.get("regression"):
                     incident, created = open_regression_incident(
                         db,
                         run,

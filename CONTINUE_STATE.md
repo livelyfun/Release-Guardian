@@ -5,7 +5,7 @@
 - Branch: `main`
 - Remote: `git@github.com:livelyfun/Release-Guardian.git`
 - Latest commit: `git log -1`
-- Backend tests: 79 passed, 1 warning
+- Backend tests: 82 passed, 1 warning
 - Backend lint: `cd backend && .venv/bin/ruff check app tests`
 - Scripts lint: `backend/.venv/bin/ruff check scripts --config backend/pyproject.toml`
 - Frontend: lint, `tsc --noEmit`, and `npm run build` pass
@@ -22,7 +22,8 @@
   sweeper, per-run execution lock, retries/time limits, manual/deployment triggers.
 - Baselines/regression detection, incident lifecycle, signed webhook and email
   adapters, escalation ladder with CRUD API and scheduled retries, and
-  notification retry backoff/jitter with a per-attempt cap.
+  notification retry backoff/jitter with a per-attempt cap, maintenance
+  windows, and consecutive-failure thresholds.
 - Artifacts in S3-compatible storage; ownership is checked (artifact → run →
   environment → project) before issuing a 15-minute signed URL.
 - Usage metering by kind (`runs`, `browser_checks`, `lighthouse_checks`).

@@ -143,3 +143,35 @@ class UsageRecordOut(ORMModel):
     metric: str
     quantity: float
     recorded_at: datetime
+
+
+class MaintenanceWindowCreate(BaseModel):
+    project_id: str | None = None
+    environment_id: str | None = None
+    monitor_id: str | None = None
+    reason: str = Field(default="", max_length=300)
+    starts_at: datetime
+    ends_at: datetime
+
+    @model_validator(mode="after")
+    def _validate_window(self):
+        if (self.starts_at.tzinfo is None) != (self.ends_at.tzinfo is None):
+            raise ValueError("starts_at and ends_at must both include a timezone or both omit it")
+        if self.ends_at <= self.starts_at:
+            raise ValueError("ends_at must be after starts_at")
+        scopes = [self.project_id, self.environment_id, self.monitor_id]
+        if sum(scope is not None for scope in scopes) > 1:
+            raise ValueError("Choose at most one scope: project_id, environment_id, or monitor_id")
+        return self
+
+
+class MaintenanceWindowOut(ORMModel):
+    id: str
+    workspace_id: str
+    project_id: str | None
+    environment_id: str | None
+    monitor_id: str | None
+    reason: str
+    starts_at: datetime
+    ends_at: datetime
+    created_at: datetime

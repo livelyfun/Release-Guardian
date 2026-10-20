@@ -66,7 +66,9 @@ Each phase lists its exit criteria; a phase is complete only when the criteria a
 - Escalation ladder: rules per workspace/severity, ordered by elapsed minutes,
   fired at most once per incident, retried on delivery failure, CRUD API, and a
   scheduler sweep.
-- Remaining: maintenance windows, real email transport, more channels.
+- Maintenance windows (workspace/project/environment/monitor scoped) suppress
+  incident creation; consecutive-failure thresholds prevent single-blip pages.
+- Remaining: real email transport, more channels.
 - Exit criteria: duplicate failures produce one incident and one notification
   per transition. Met for webhooks.
 

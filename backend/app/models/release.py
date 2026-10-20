@@ -88,3 +88,23 @@ class UsageRecord(IdMixin, TimestampMixin, Base):
     metric: Mapped[str] = mapped_column(String(80), index=True)
     quantity: Mapped[float] = mapped_column(Float, default=0.0)
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class MaintenanceWindow(IdMixin, TimestampMixin, Base):
+    __tablename__ = "maintenance_windows"
+
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    project_id: Mapped[str | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    environment_id: Mapped[str | None] = mapped_column(
+        ForeignKey("environments.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    monitor_id: Mapped[str | None] = mapped_column(
+        ForeignKey("monitors.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    reason: Mapped[str] = mapped_column(String(300), default="")
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
