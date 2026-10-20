@@ -53,6 +53,9 @@ class NotificationAttemptOut(ORMModel):
     incident_id: str | None
     status: str
     attempt: int
+    subject: str | None
+    body: str | None
+    next_attempt_at: datetime | None
     error: str | None
     created_at: datetime
 

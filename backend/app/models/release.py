@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -72,7 +72,12 @@ class NotificationAttempt(IdMixin, TimestampMixin, Base):
         ForeignKey("incidents.id", ondelete="CASCADE"), nullable=True
     )
     status: Mapped[str] = mapped_column(String(20), default="pending")
-    attempt: Mapped[int] = mapped_column(Integer, default=1)
+    attempt: Mapped[int] = mapped_column(Integer, default=0)
+    subject: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
     error: Mapped[str | None] = mapped_column(String(1000), nullable=True)
 
 

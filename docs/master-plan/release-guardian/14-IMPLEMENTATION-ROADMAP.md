@@ -61,12 +61,12 @@ Each phase lists its exit criteria; a phase is complete only when the criteria a
 
 ### M6 — Incidents and notifications (partial)
 - Incident dedupe key, open/acknowledge/resolve, recurrence events, webhook
-  delivery attempts, HMAC-signed outgoing webhooks.
+  delivery attempts, HMAC-signed outgoing webhooks, exponential backoff with
+  jitter and a retry cap for failed deliveries.
 - Escalation ladder: rules per workspace/severity, ordered by elapsed minutes,
   fired at most once per incident, retried on delivery failure, CRUD API, and a
   scheduler sweep.
-- Remaining: maintenance windows, notification retry/backoff for initial
-  notifications, real email transport, more channels.
+- Remaining: maintenance windows, real email transport, more channels.
 - Exit criteria: duplicate failures produce one incident and one notification
   per transition. Met for webhooks.
 

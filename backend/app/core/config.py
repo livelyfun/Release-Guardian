@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     # Backpressure: bound queued/executing work per monitor and workspace.
     max_active_runs_per_monitor: int = 1
     max_active_runs_per_workspace: int = 50
+
+    # Delivery retries: total attempts includes the first send.
+    notification_max_attempts: int = Field(default=4, ge=1, le=10)
+    notification_retry_base_seconds: int = Field(default=30, ge=1, le=3600)
+    notification_retry_max_seconds: int = Field(default=900, ge=1, le=86400)
+    notification_sweep_batch: int = Field(default=100, ge=1, le=1000)
 
     log_level: str = "INFO"
     metrics_enabled: bool = True

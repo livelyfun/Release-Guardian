@@ -209,10 +209,10 @@ causing retry storms.
 webhook URL validity, and response codes. Check whether failures are one channel
 or all channels.
 
-**Recover:** Fix credentials/URLs, or add a secondary channel. Failed initial
-notifications are not retried automatically; escalation rules are retried on
-each scheduler sweep until delivery succeeds. Re-notify an incident by
-transitioning it (ack/resolve) or replaying manually with the provider.
+**Recover:** Fix credentials/URLs, or add a secondary channel. Failed deliveries
+retry with exponential backoff + jitter up to `NOTIFICATION_MAX_ATTEMPTS`;
+escalation rules retry on each scheduler sweep until delivery succeeds.
+Re-notify an incident by transitioning it (ack/resolve).
 
 **Verify:** A test incident reaches all enabled channels; failure rate returns
 below 1%.

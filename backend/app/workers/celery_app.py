@@ -40,6 +40,10 @@ celery_app.conf.update(
             "task": "release_guardian.escalate_incidents",
             "schedule": 60.0,
         },
+        "retry-notifications": {
+            "task": "release_guardian.retry_notifications",
+            "schedule": 30.0,
+        },
     },
 )
 
@@ -70,3 +74,10 @@ def escalate_incidents_task() -> dict:
     from app.services.incidents import escalate_due_incidents
 
     return escalate_due_incidents()
+
+
+@celery_app.task(name="release_guardian.retry_notifications")
+def retry_notifications_task() -> dict:
+    from app.services.notifications.dispatch import retry_failed_notifications
+
+    return retry_failed_notifications()
