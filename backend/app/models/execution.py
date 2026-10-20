@@ -22,6 +22,23 @@ class EscalationRule(IdMixin, TimestampMixin, Base):
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
+class AIConfiguration(IdMixin, TimestampMixin, Base):
+    """Configuration for AI assistance settings per workspace."""
+    __tablename__ = "ai_configurations"
+
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), index=True, unique=True
+    )
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    model_provider: Mapped[str | None] = mapped_column(String(50), nullable=True)  # openai, anthropic, google, etc.
+    model_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    temperature: Mapped[float] = mapped_column(default=0.0)
+    max_tokens: Mapped[int | None] = mapped_column(default=None)
+    redact_pii: Mapped[bool] = mapped_column(Boolean, default=True)
+    confidence_threshold: Mapped[float] = mapped_column(default=0.8)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class Run(IdMixin, TimestampMixin, Base):
     __tablename__ = "runs"
 
